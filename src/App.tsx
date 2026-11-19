@@ -16,6 +16,7 @@ import { Login } from '@/pages/auth/Login';
 import { Signup } from '@/pages/auth/Signup';
 import { ForgotPassword } from '@/pages/auth/ForgotPassword';
 import { ResetPassword } from '@/pages/auth/ResetPassword';
+import { AuthCallback } from '@/pages/auth/AuthCallback';
 import { ProfilePage } from '@/pages/auth/Profile';
 import { HowItWorksPage } from '@/pages/info/HowItWorks';
 import { PrivacyPage } from '@/pages/info/Privacy';
@@ -65,6 +66,7 @@ export const App: React.FC = () => {
                       <Route path="/signup" element={<Signup />} />
                       <Route path="/forgot-password" element={<ForgotPassword />} />
                       <Route path="/reset-password" element={<ResetPassword />} />
+                      <Route path="/auth/callback" element={<AuthCallback />} />
                       <Route path="/how-it-works" element={<HowItWorksPage />} />
                       <Route path="/privacy" element={<PrivacyPage />} />
                       <Route path="/terms" element={<TermsPage />} />

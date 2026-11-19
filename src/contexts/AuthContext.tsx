@@ -15,6 +15,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null; user: User | null }>;
   signOut: () => Promise<void>;
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
+  resendVerificationEmail: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
@@ -134,6 +135,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: error ? new Error(error.message) : null };
   };
 
+  const resendVerificationEmail = async (email: string) => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { error: new Error('Supabase is not configured') };
+    }
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    return { error: error ? new Error(error.message) : null };
+  };
+
   const updatePassword = async (newPassword: string) => {
     if (!isSupabaseConfigured || !supabase) {
       return { error: new Error('Supabase is not configured') };
@@ -174,6 +186,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUp,
         signOut,
         resetPasswordForEmail,
+        resendVerificationEmail,
         updatePassword,
         updateProfile,
         refreshProfile,
@@ -191,4 +204,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
