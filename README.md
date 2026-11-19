@@ -54,7 +54,7 @@ A production-grade, responsive, and privacy-preserving web platform for reportin
 - **Frontend**: React 18, Vite 5, TypeScript, Tailwind CSS, Lucide React, React Router v6, React Hook Form + Zod, TanStack Query v5, Leaflet.
 - **Backend**: Node.js v20.18, Express, TypeScript, Helmet, CORS, Express Rate Limit, Zod validation.
 - **Data & Auth**: Supabase (PostgreSQL, Row-Level Security, Auth, Storage bucket `'item-images'`).
-- **Testing**: Vitest, React Testing Library, Supertest (17/17 automated tests passing).
+- **Testing**: Vitest, React Testing Library, Supertest (26/26 automated tests passing across 5 suites).
 
 ---
 
