@@ -94,6 +94,14 @@ export const App: React.FC = () => {
                           </ProtectedRoute>
                         }
                       />
+                      <Route
+                        path="/items/:id/edit"
+                        element={
+                          <ProtectedRoute>
+                            <ReportItemPage />
+                          </ProtectedRoute>
+                        }
+                      />
 
                       {/* Protected Dashboard & Messages */}
                       <Route

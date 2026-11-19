@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Eye,
   SlidersHorizontal,
+  Edit,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -392,6 +393,13 @@ export const DashboardPage: React.FC = () => {
                           <Eye className="w-3.5 h-3.5 mr-1" /> View Listing
                         </Link>
                         <div className="flex items-center space-x-1">
+                          <Link
+                            to={`/items/${item.id}/edit`}
+                            className="p-1.5 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-700/50 rounded-lg"
+                            title="Edit Listing"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Link>
                           {item.status !== 'returned' && (
                             <button
                               onClick={() => handleMarkItemReturned(item.id)}
@@ -478,6 +486,13 @@ export const DashboardPage: React.FC = () => {
                           <Eye className="w-3.5 h-3.5 mr-1" /> View Listing
                         </Link>
                         <div className="flex items-center space-x-1">
+                          <Link
+                            to={`/items/${item.id}/edit`}
+                            className="p-1.5 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-700/50 rounded-lg"
+                            title="Edit Listing"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Link>
                           {item.status !== 'returned' && (
                             <button
                               onClick={() => handleMarkItemReturned(item.id)}
