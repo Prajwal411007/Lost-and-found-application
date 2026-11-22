@@ -101,7 +101,20 @@ FRONTEND_URL=http://localhost:5173
 Go to your Supabase project's **SQL Editor** and run the files in the following order:
 1. `supabase/migrations/001_init.sql`: Core schema, enums, tables, RLS policies, storage bucket, triggers, and category seed.
 2. `supabase/migrations/002_campus_places.sql`: Campus places and building landmarks schema and seeds.
-3. `supabase/seed.sql` (Optional): Demo items, realistic matches, sample claims, and profiles.
+3. `supabase/seed.sql` (Optional Demo Data): Creates test users in `auth.users`, profiles, sample items, realistic matches, and claims.
+
+> [!CAUTION]
+> **DEMO ONLY — NEVER RUN SEED AGAINST PRODUCTION**  
+> `supabase/seed.sql` is strictly intended for local development and test environments. It creates pre-seeded accounts with fixed UUIDs and well-known passwords. **Never run `seed.sql` against a production database.**
+
+#### Pre-Configured Demo Accounts (Development Only)
+When `supabase/seed.sql` is executed, the following demo accounts are created and pre-confirmed for immediate login:
+
+| Email | Password | Role | Permissions / Purpose |
+| :--- | :--- | :--- | :--- |
+| `admin@lostandfound.local` | `AdminDemo123!` | `admin` | Full admin privileges (`/admin` console, moderation queue, user management) |
+| `alex.reporter@example.com` | `AlexDemo123!` | `user` | Reporter demo user (owns lost MacBook report & brown wallet report) |
+| `sarah.finder@example.com` | `SarahDemo123!` | `user` | Finder demo user (owns found MacBook report & car key fob report) |
 
 ### Step 4: Run Development Servers
 Start both the Vite frontend (`http://localhost:5173`) and Express API backend (`http://localhost:3001`):

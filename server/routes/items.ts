@@ -79,7 +79,9 @@ itemsRouter.get(
 
       const { data, count, error } = await query.range(from, to);
 
-      if (error) throw error;
+      if (error) {
+        return res.status(503).json({ items: [], total: 0, error: 'Database service unavailable' });
+      }
 
       res.json({
         items: data || [],
@@ -89,7 +91,7 @@ itemsRouter.get(
         totalPages: Math.ceil((count || 0) / pageSize),
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Failed to search items' });
+      res.status(503).json({ error: err.message || 'Database service temporarily unavailable' });
     }
   }
 );
