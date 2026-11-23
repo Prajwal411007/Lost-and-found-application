@@ -21,8 +21,10 @@ import {
   BookOpen,
   Trophy,
   Package,
+  Navigation,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { useGeolocation } from '@/contexts/LocationContext';
 import { Item, Category } from '@/types';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -44,6 +46,7 @@ const categoryIcons: Record<string, React.FC<{ className?: string }>> = {
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
+  const { coords, requestLocation, openPrompt } = useGeolocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [locationQuery, setLocationQuery] = useState('');
@@ -122,6 +125,19 @@ export const Home: React.FC = () => {
     if (selectedCategory) params.set('category', selectedCategory);
     if (locationQuery.trim()) params.set('location', locationQuery.trim());
     navigate(`/browse?${params.toString()}`);
+  };
+
+  const handleNearMeSearch = async () => {
+    if (coords) {
+      navigate('/browse?nearMe=true&sort=nearest');
+    } else {
+      const loc = await requestLocation();
+      if (loc) {
+        navigate('/browse?nearMe=true&sort=nearest');
+      } else {
+        openPrompt();
+      }
+    }
   };
 
   return (
@@ -212,6 +228,33 @@ export const Home: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Quick Search Chips including Near Me */}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
+            <span>Quick search:</span>
+            <button
+              type="button"
+              onClick={handleNearMeSearch}
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900 transition shadow-2xs"
+            >
+              <Navigation className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+              <span>Items Near Me</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/browse?type=lost')}
+              className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition"
+            >
+              Recent Lost
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/browse?type=found')}
+              className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition"
+            >
+              Recent Found
+            </button>
           </div>
         </div>
       </section>

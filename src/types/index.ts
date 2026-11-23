@@ -29,10 +29,17 @@ export interface NominatimPlace {
   address?: {
     road?: string;
     suburb?: string;
+    neighbourhood?: string;
     city?: string;
+    town?: string;
+    village?: string;
+    county?: string;
+    province?: string;
+    municipality?: string;
     state?: string;
     country?: string;
     postcode?: string;
+    [key: string]: string | undefined;
   };
 }
 

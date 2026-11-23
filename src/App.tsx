@@ -2,11 +2,13 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { LocationProvider } from '@/contexts/LocationContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { Navbar } from '@/components/common/Navbar';
 import { Footer } from '@/components/common/Footer';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { LocationPermissionDialog } from '@/components/common/LocationPermissionDialog';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
 
@@ -47,8 +49,10 @@ export const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <BrowserRouter>
-            <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors">
+          <LocationProvider>
+            <BrowserRouter>
+              <LocationPermissionDialog />
+              <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors">
               <Navbar />
               <main className="flex-1">
                 <ErrorBoundary>
@@ -151,7 +155,8 @@ export const App: React.FC = () => {
               <Footer />
             </div>
           </BrowserRouter>
-        </AuthProvider>
+        </LocationProvider>
+      </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

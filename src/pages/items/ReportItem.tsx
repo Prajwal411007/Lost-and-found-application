@@ -17,10 +17,13 @@ import {
   Shield,
   HelpCircle,
   Trash2,
+  Navigation,
+  Search,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Category, ItemImage } from '@/types';
+import { useGeolocation } from '@/contexts/LocationContext';
+import { Category, ItemImage, NominatimPlace } from '@/types';
 import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
 import { reverseGeocode, searchPlaces } from '@/services/geocoding';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
@@ -53,6 +56,7 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
   const isEditMode = Boolean(id);
 
   const { user, isAdmin, isConfigured } = useAuth();
+  const { coords: userCoords, status: geoStatus, requestLocation } = useGeolocation();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -66,6 +70,14 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+
+  // Current location & place autocomplete state
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [placeQuery, setPlaceQuery] = useState('');
+  const [placeSuggestions, setPlaceSuggestions] = useState<NominatimPlace[]>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showLocationDeniedAlert, setShowLocationDeniedAlert] = useState(false);
 
   const {
     register,
@@ -162,14 +174,92 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
     return <ConfigurationRequired />;
   }
 
-  const handleMapClick = async (lat: number, lng: number) => {
+  // Search places for manual entry autocomplete
+  useEffect(() => {
+    if (!placeQuery.trim() || placeQuery.trim().length < 2) {
+      setPlaceSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingPlaces(true);
+      try {
+        const places = await searchPlaces(placeQuery);
+        setPlaceSuggestions(places);
+        setShowSuggestions(true);
+      } catch (err) {
+        console.warn('Place search error:', err);
+      } finally {
+        setIsSearchingPlaces(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [placeQuery]);
+
+  const handleSelectPlace = (place: NominatimPlace) => {
+    const lat = Math.round(parseFloat(place.lat) * 1000) / 1000;
+    const lng = Math.round(parseFloat(place.lon) * 1000) / 1000;
     setSelectedCoords({ lat, lng });
+
+    if (place.address) {
+      if (place.address.country) setValue('locationCountry', place.address.country);
+      if (place.address.state) setValue('locationState', place.address.state);
+      const city = place.address.city || place.address.town || place.address.village || place.address.suburb || place.address.road || '';
+      if (city) setValue('locationCity', city);
+      if (place.address.suburb || place.address.neighbourhood) {
+        setValue('locationLandmark', place.address.suburb || place.address.neighbourhood || '');
+      }
+    }
+    setShowSuggestions(false);
+    setPlaceQuery('');
+  };
+
+  // "Use my current location" handler with ~3 decimal rounding and reverse geocoding
+  const handleUseCurrentLocation = async () => {
+    setIsGettingLocation(true);
+    setShowLocationDeniedAlert(false);
+
     try {
-      const place = await reverseGeocode(lat, lng);
+      const loc = await requestLocation();
+      if (loc) {
+        // Round to ~3 decimal places (~110m privacy blur)
+        const roundedLat = Math.round(loc.latitude * 1000) / 1000;
+        const roundedLng = Math.round(loc.longitude * 1000) / 1000;
+        setSelectedCoords({ lat: roundedLat, lng: roundedLng });
+
+        const place = await reverseGeocode(roundedLat, roundedLng);
+        if (place && place.address) {
+          if (place.address.country) setValue('locationCountry', place.address.country);
+          if (place.address.state) setValue('locationState', place.address.state);
+          const city = place.address.city || place.address.town || place.address.village || place.address.suburb || place.address.road || '';
+          if (city) setValue('locationCity', city);
+          if (place.address.suburb || place.address.neighbourhood) {
+            setValue('locationLandmark', place.address.suburb || place.address.neighbourhood || '');
+          }
+        }
+      } else {
+        setShowLocationDeniedAlert(true);
+      }
+    } catch (err) {
+      console.warn('Geolocation request failed:', err);
+      setShowLocationDeniedAlert(true);
+    } finally {
+      setIsGettingLocation(false);
+    }
+  };
+
+  const handleMapClick = async (lat: number, lng: number) => {
+    // Round to 3 decimals
+    const roundedLat = Math.round(lat * 1000) / 1000;
+    const roundedLng = Math.round(lng * 1000) / 1000;
+    setSelectedCoords({ lat: roundedLat, lng: roundedLng });
+    try {
+      const place = await reverseGeocode(roundedLat, roundedLng);
       if (place && place.address) {
         if (place.address.country) setValue('locationCountry', place.address.country);
         if (place.address.state) setValue('locationState', place.address.state);
-        const city = place.address.city || place.address.suburb || place.address.road || '';
+        const city = place.address.city || place.address.town || place.address.village || place.address.suburb || place.address.road || '';
         if (city) setValue('locationCity', city);
       }
     } catch (err) {
@@ -274,8 +364,8 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
         location_state: data.locationState || null,
         location_city: data.locationCity,
         location_landmark: data.locationLandmark || null,
-        latitude: selectedCoords ? selectedCoords.lat : null,
-        longitude: selectedCoords ? selectedCoords.lng : null,
+        latitude: selectedCoords ? Math.round(selectedCoords.lat * 1000) / 1000 : null,
+        longitude: selectedCoords ? Math.round(selectedCoords.lng * 1000) / 1000 : null,
         primary_image_url: primaryUrl,
         attributes: {
           color: data.color || null,
@@ -612,13 +702,94 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
 
         {/* Section 3: Location & Interactive Map Pin */}
         <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-5">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">
-              3. Location & Map Pin
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Select or type the approximate location. Home addresses are strictly prohibited.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-700">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                3. Location & Map Pin
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Select or type the approximate location. Home addresses are strictly prohibited.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleUseCurrentLocation}
+              disabled={isGettingLocation || geoStatus === 'requesting'}
+              title="Detect current location and autofill address and map pin"
+              aria-label="Use my current location"
+              className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition shadow-xs disabled:opacity-50"
+            >
+              {isGettingLocation || geoStatus === 'requesting' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+              ) : (
+                <Navigation className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              )}
+              <span>{isGettingLocation ? 'Detecting...' : 'Use My Current Location'}</span>
+            </button>
+          </div>
+
+          {/* Location Denied or Blocked Instructions */}
+          {(showLocationDeniedAlert || geoStatus === 'denied') && (
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 flex items-start space-x-3">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold">Location Permission Blocked</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowLocationDeniedAlert(false)}
+                    className="text-amber-600 hover:text-amber-800"
+                    aria-label="Dismiss alert"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="leading-relaxed text-[11px]">
+                  Your browser blocked location access. To re-enable it: click the padlock or site settings icon next to the URL in your browser address bar, set <strong>Location</strong> to <strong>Allow</strong>, and refresh the page. You can also search or enter your city manually below.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Place Search / Manual Autocomplete */}
+          <div className="relative">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Search Location Autocomplete (Optional)</span>
+              {isSearchingPlaces && (
+                <span className="flex items-center text-[11px] text-blue-600 dark:text-blue-400 font-normal">
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" /> Searching places...
+                </span>
+              )}
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={placeQuery}
+                onChange={(e) => setPlaceQuery(e.target.value)}
+                onFocus={() => setShowSuggestions(placeSuggestions.length > 0)}
+                placeholder="Type a city, neighborhood, or public place to autofill fields & map pin..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Suggestions Dropdown */}
+            {showSuggestions && placeSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg z-50 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700">
+                {placeSuggestions.map((place, idx) => (
+                  <button
+                    key={`${place.place_id || idx}`}
+                    type="button"
+                    onClick={() => handleSelectPlace(place)}
+                    className="w-full px-4 py-2.5 text-left text-xs hover:bg-blue-50 dark:hover:bg-slate-700 transition flex items-start space-x-2.5 text-slate-700 dark:text-slate-200"
+                  >
+                    <MapPin className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span className="line-clamp-2 leading-relaxed">{place.display_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -675,14 +846,20 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
               <span>Click on map to drop approximate pin (Optional)</span>
               {selectedCoords && (
-                <span className="text-[11px] text-blue-600 font-mono">
-                  {selectedCoords.lat.toFixed(4)}, {selectedCoords.lng.toFixed(4)}
+                <span className="text-[11px] text-blue-600 font-mono font-medium">
+                  {selectedCoords.lat.toFixed(3)}, {selectedCoords.lng.toFixed(3)} (Approximate)
                 </span>
               )}
             </label>
             <LeafletMap
               markers={mapMarkers}
-              center={selectedCoords ? [selectedCoords.lat, selectedCoords.lng] : [37.7749, -122.4194]}
+              center={
+                selectedCoords
+                  ? [selectedCoords.lat, selectedCoords.lng]
+                  : userCoords
+                  ? [userCoords.latitude, userCoords.longitude]
+                  : [37.7749, -122.4194]
+              }
               onLocationSelect={handleMapClick}
               height="280px"
             />
