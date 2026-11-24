@@ -27,13 +27,19 @@ import {
   Globe,
   Phone,
   Layers,
+  WifiOff,
+  Hourglass,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { CampusPlace, CampusBuilding, Item } from '@/types';
 import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
 import { getWalkingDirections } from '@/services/routing';
 import { useGeolocation } from '@/contexts/LocationContext';
-import { useNearbyInstitutions, NearbyInstitution } from '@/hooks/useNearbyInstitutions';
+import {
+  useNearbyInstitutions,
+  NearbyInstitution,
+  getInstitutionErrorInfo,
+} from '@/hooks/useNearbyInstitutions';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 
@@ -519,6 +525,67 @@ export const CampusPage: React.FC = () => {
       (b.code && b.code.toLowerCase().includes(buildingSearch.toLowerCase()))
   );
 
+  const renderInstitutionErrorState = () => {
+    const info = getInstitutionErrorInfo(institutionsError);
+
+    const getIcon = () => {
+      switch (info.code) {
+        case 'SERVICE_UNREACHABLE':
+          return <WifiOff className="w-5 h-5 text-amber-600 dark:text-amber-400 mx-auto" />;
+        case 'RATE_LIMITED':
+          return <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 mx-auto" />;
+        case 'TIMEOUT':
+          return <Hourglass className="w-5 h-5 text-amber-600 dark:text-amber-400 mx-auto" />;
+        case 'OVERPASS_FAILURE':
+          return <Globe className="w-5 h-5 text-rose-600 dark:text-rose-400 mx-auto" />;
+        default:
+          return <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 mx-auto" />;
+      }
+    };
+
+    const isWarning =
+      info.code === 'SERVICE_UNREACHABLE' ||
+      info.code === 'RATE_LIMITED' ||
+      info.code === 'TIMEOUT';
+
+    const borderBg = isWarning
+      ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60'
+      : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60';
+    const textTitle = isWarning
+      ? 'text-amber-900 dark:text-amber-200'
+      : 'text-rose-900 dark:text-rose-200';
+    const textBody = isWarning
+      ? 'text-amber-700 dark:text-amber-300'
+      : 'text-rose-700 dark:text-rose-300';
+    const textHint = isWarning
+      ? 'text-amber-600/90 dark:text-amber-400/80'
+      : 'text-rose-600/90 dark:text-rose-400/80';
+    const btnColor = isWarning
+      ? 'bg-amber-600 hover:bg-amber-700'
+      : 'bg-rose-600 hover:bg-rose-700';
+
+    return (
+      <div className={`p-4 rounded-2xl border text-center space-y-2.5 ${borderBg}`}>
+        {getIcon()}
+        <div className="space-y-1">
+          <h4 className={`text-xs font-bold ${textTitle}`}>{info.title}</h4>
+          <p className={`text-[11px] leading-relaxed ${textBody}`}>{info.message}</p>
+          {info.hint && (
+            <p className={`text-[10px] leading-normal ${textHint}`}>{info.hint}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => refetchInstitutions()}
+          className={`inline-flex items-center space-x-1.5 px-3 py-1.5 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer ${btnColor}`}
+        >
+          <RotateCcw className="w-3 h-3" />
+          <span>Retry</span>
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Top Header & Search Controls */}
@@ -809,20 +876,7 @@ export const CampusPage: React.FC = () => {
                     <LoadingSpinner size="md" message="Scanning area for institutions..." />
                   </div>
                 ) : isErrorInstitutions ? (
-                  <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-center space-y-2">
-                    <AlertCircle className="w-5 h-5 text-rose-600 mx-auto" />
-                    <p className="text-xs font-bold text-rose-700 dark:text-rose-300">
-                      {institutionsError?.message || 'Failed to fetch institutions from Overpass API.'}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => refetchInstitutions()}
-                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition cursor-pointer"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Retry</span>
-                    </button>
-                  </div>
+                  renderInstitutionErrorState()
                 ) : institutions.length === 0 ? (
                   <div className="py-8 text-center space-y-2 text-slate-500 dark:text-slate-400">
                     <School className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
@@ -990,25 +1044,29 @@ export const CampusPage: React.FC = () => {
               </select>
             </div>
 
-            <div className="space-y-2 divide-y divide-slate-100 dark:divide-slate-700/60">
-              {institutions.slice(0, 8).map((inst) => (
-                <div key={inst.id} className="pt-2 flex items-center justify-between">
-                  <div className="min-w-0 pr-2">
-                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{inst.name}</p>
-                    <p className="text-[10px] text-slate-500">{formatDistance(inst.distance)}</p>
+            {isErrorInstitutions ? (
+              renderInstitutionErrorState()
+            ) : (
+              <div className="space-y-2 divide-y divide-slate-100 dark:divide-slate-700/60">
+                {institutions.slice(0, 8).map((inst) => (
+                  <div key={inst.id} className="pt-2 flex items-center justify-between">
+                    <div className="min-w-0 pr-2">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{inst.name}</p>
+                      <p className="text-[10px] text-slate-500">{formatDistance(inst.distance)}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setTargetDestination({ lat: inst.lat, lng: inst.lng, title: inst.name });
+                        setMobileDrawerOpen(false);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-bold shrink-0"
+                    >
+                      Walk
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setTargetDestination({ lat: inst.lat, lng: inst.lng, title: inst.name });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-bold shrink-0"
-                  >
-                    Walk
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

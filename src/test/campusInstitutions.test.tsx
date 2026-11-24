@@ -185,4 +185,77 @@ describe('Campus Mode - Nearby Institutions Feature', () => {
     fireEvent.change(searchInput, { target: { value: 'Cambridge' } });
     expect(searchInput).toHaveValue('Cambridge');
   });
+
+  it('displays 404 Service Not Reachable error with hint and Retry button', async () => {
+    global.fetch = vi.fn((url: any) => {
+      if (url.toString().includes('/api/nearby-institutions')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: () => Promise.resolve({ error: 'Not Found' }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as any);
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText(/Nearby Service Not Reachable \(HTTP 404\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/VITE_API_URL/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
+  });
+
+  it('displays 429 Rate Limit error with Retry button', async () => {
+    global.fetch = vi.fn((url: any) => {
+      if (url.toString().includes('/api/nearby-institutions')) {
+        return Promise.resolve({
+          ok: false,
+          status: 429,
+          json: () => Promise.resolve({ error: 'Too Many Requests' }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as any);
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText(/Search Rate Limit Exceeded/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
+  });
+
+  it('displays 502 OpenStreetMap error with Retry button', async () => {
+    global.fetch = vi.fn((url: any) => {
+      if (url.toString().includes('/api/nearby-institutions')) {
+        return Promise.resolve({
+          ok: false,
+          status: 502,
+          json: () => Promise.resolve({ error: 'OpenStreetMap query failed or timed out' }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as any);
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText(/OpenStreetMap Service Busy/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
+  });
 });

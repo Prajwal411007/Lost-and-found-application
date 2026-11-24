@@ -175,5 +175,19 @@ describe('Nearby Institutions API (/api/nearby-institutions)', () => {
       expect(res2.body.institutions[0].name).toBe('MIT');
       expect(global.fetch).toHaveBeenCalledTimes(1); // Still 1!
     });
+
+    it('allows CORS from Vercel deployment domains (*.vercel.app)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ elements: [] }),
+      } as any);
+
+      const res = await request(app)
+        .get('/api/nearby-institutions?lat=37.4&lng=-122.1')
+        .set('Origin', 'https://lost-and-found-preview.vercel.app');
+
+      expect(res.headers['access-control-allow-origin']).toBe('https://lost-and-found-preview.vercel.app');
+      expect(res.headers['access-control-allow-credentials']).toBe('true');
+    });
   });
 });

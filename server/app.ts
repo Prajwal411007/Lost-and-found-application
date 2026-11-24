@@ -29,10 +29,37 @@ app.use(
 );
 
 // CORS configuration
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+const configuredOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const defaultAllowedOrigins = [
+  ...configuredOrigins,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+];
+
 app.use(
   cors({
-    origin: [frontendUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. server-to-server, curl, tests, mobile)
+      if (!origin) return callback(null, true);
+
+      // Check explicit allowed origins
+      if (defaultAllowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      // Allow any Vercel deployment preview or production domain (*.vercel.app)
+      if (/^https:\/\/[a-zA-Z0-9_.-]+\.vercel\.app$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
     credentials: true,
   })
 );
