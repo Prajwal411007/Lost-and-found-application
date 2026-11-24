@@ -14,11 +14,14 @@ import {
   Navigation,
   AlertTriangle,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { Item, Category } from '@/types';
 import { formatDate, formatRelativeTime, haversineDistance } from '@/lib/utils';
 import { useGeolocation } from '@/contexts/LocationContext';
+import { useCategories } from '@/hooks/useCategories';
+import { CategoryIcon } from '@/lib/categoryIcons';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 
@@ -46,9 +49,16 @@ export const BrowsePage: React.FC = () => {
     openPrompt,
   } = useGeolocation();
 
+  // Categories from shared TanStack Query hook
+  const {
+    categories,
+    isLoading: isLoadingCategories,
+    isError: isErrorCategories,
+    refetch: refetchCategories,
+  } = useCategories();
+
   // Local state
   const [searchInput, setSearchInput] = useState(queryParam);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,18 +67,6 @@ export const BrowsePage: React.FC = () => {
   const [isActivatingNearMe, setIsActivatingNearMe] = useState(false);
 
   const pageSize = 12;
-
-  // Load categories
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-    supabase
-      .from('categories')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        if (data) setCategories(data);
-      });
-  }, []);
 
   // Sync search input with URL
   useEffect(() => {
@@ -390,18 +388,32 @@ export const BrowsePage: React.FC = () => {
           </div>
 
           {/* Category Dropdown */}
-          <select
-            value={categoryParam}
-            onChange={(e) => updateFilter('category', e.target.value)}
-            className="py-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-300"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center space-x-1">
+            <select
+              value={categoryParam}
+              onChange={(e) => updateFilter('category', e.target.value)}
+              aria-label="Filter by category"
+              className="py-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-300"
+            >
+              <option value="">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.slug}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {isErrorCategories && (
+              <button
+                type="button"
+                onClick={() => refetchCategories()}
+                title="Retry loading categories"
+                className="p-1 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 hover:text-rose-700 text-xs"
+                aria-label="Retry loading categories"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
 
           {/* Date Range Dropdown */}
           <select
@@ -568,8 +580,9 @@ export const BrowsePage: React.FC = () => {
                       >
                         {item.type}
                       </span>
-                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-black/60 backdrop-blur-md text-white rounded-md">
-                        {item.category?.name || 'Item'}
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-black/60 backdrop-blur-md text-white rounded-md flex items-center">
+                        <CategoryIcon icon={item.category?.icon} slug={item.category?.slug} className="w-3 h-3 mr-1 shrink-0" />
+                        <span className="truncate max-w-[120px]">{item.category?.name || 'Item'}</span>
                       </span>
                       {distance !== null && (
                         <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600/90 backdrop-blur-md text-white rounded-md shadow-sm flex items-center">

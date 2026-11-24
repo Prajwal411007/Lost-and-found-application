@@ -27,6 +27,7 @@ import { Category, ItemImage, NominatimPlace } from '@/types';
 import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
 import { reverseGeocode, searchPlaces } from '@/services/geocoding';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
+import { CategorySelect } from '@/components/common/CategorySelect';
 
 const reportSchema = z.object({
   type: z.enum(['lost', 'found']),
@@ -60,7 +61,6 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [existingImages, setExistingImages] = useState<ItemImage[]>([]);
   const [deletedImageIds, setDeletedImageIds] = useState<string[]>([]);
@@ -97,18 +97,6 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
   });
 
   const currentType = watch('type');
-
-  // Load categories
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-    supabase
-      .from('categories')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        if (data) setCategories(data);
-      });
-  }, []);
 
   // In edit mode: load existing item details
   useEffect(() => {
@@ -581,21 +569,14 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                Category *
-              </label>
-              <select
+              <CategorySelect
+                id="categoryId"
+                label="Category"
                 {...register('categoryId')}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              {errors.categoryId && <p className="mt-1 text-xs text-rose-600">{errors.categoryId.message}</p>}
+                value={watch('categoryId')}
+                errorMessage={errors.categoryId?.message}
+                required
+              />
             </div>
 
             <div>

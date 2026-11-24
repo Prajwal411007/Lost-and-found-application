@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocationProvider, useGeolocation } from '@/contexts/LocationContext';
 import { LocationPermissionDialog } from '@/components/common/LocationPermissionDialog';
 import { haversineDistance } from '@/lib/utils';
@@ -317,12 +318,15 @@ describe('Geolocation & Proximity Feature', () => {
         writable: true,
       });
 
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
       render(
-        <MemoryRouter>
-          <LocationProvider>
-            <ReportItemPage initialType="lost" />
-          </LocationProvider>
-        </MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <LocationProvider>
+              <ReportItemPage initialType="lost" />
+            </LocationProvider>
+          </MemoryRouter>
+        </QueryClientProvider>
       );
 
       const useLocationBtn = screen.getByRole('button', { name: /Use my current location/i });

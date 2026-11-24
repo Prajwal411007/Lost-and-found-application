@@ -26,6 +26,7 @@ import { Item, ItemImage, Profile } from '@/types';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { CategoryIcon } from '@/lib/categoryIcons';
 
 export const ItemDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -356,8 +357,9 @@ export const ItemDetailsPage: React.FC = () => {
               >
                 {item.type}
               </span>
-              <span className="px-2.5 py-1 text-xs font-semibold bg-black/60 backdrop-blur-md text-white rounded-lg">
-                {item.category?.name || 'Category'}
+              <span className="px-2.5 py-1 text-xs font-semibold bg-black/60 backdrop-blur-md text-white rounded-lg flex items-center">
+                <CategoryIcon icon={item.category?.icon} slug={item.category?.slug} className="w-3.5 h-3.5 mr-1.5" />
+                <span>{item.category?.name || 'Category'}</span>
               </span>
             </div>
             {item.status === 'returned' && (

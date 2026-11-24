@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LocationProvider } from '@/contexts/LocationContext';
 import { ReportItemPage } from '@/pages/items/ReportItem';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -18,6 +20,19 @@ vi.mock('@/components/common/LeafletMap', () => ({
   LeafletMap: () => <div data-testid="mock-leaflet-map">Leaflet Map</div>,
 }));
 
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <LocationProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </LocationProvider>
+    </QueryClientProvider>
+  );
+}
+
 describe('Report Item Page - Creation and Validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -29,11 +44,7 @@ describe('Report Item Page - Creation and Validation', () => {
   });
 
   it('renders report form with proper title and privacy warning when reporting found item', () => {
-    render(
-      <MemoryRouter>
-        <ReportItemPage initialType="found" />
-      </MemoryRouter>
-    );
+    renderWithProviders(<ReportItemPage initialType="found" />);
 
     expect(screen.getByText(/Report a Found Item/i)).toBeInTheDocument();
     expect(screen.getByText(/Privacy & Security Warning:/i)).toBeInTheDocument();
@@ -41,11 +52,7 @@ describe('Report Item Page - Creation and Validation', () => {
   });
 
   it('validates required fields on submission', async () => {
-    render(
-      <MemoryRouter>
-        <ReportItemPage initialType="lost" />
-      </MemoryRouter>
-    );
+    renderWithProviders(<ReportItemPage initialType="lost" />);
 
     const submitBtn = screen.getByRole('button', { name: /Submit Lost Report/i });
     fireEvent.click(submitBtn);
@@ -58,11 +65,7 @@ describe('Report Item Page - Creation and Validation', () => {
   });
 
   it('switches between Lost and Found mode dynamically', () => {
-    render(
-      <MemoryRouter>
-        <ReportItemPage initialType="lost" />
-      </MemoryRouter>
-    );
+    renderWithProviders(<ReportItemPage initialType="lost" />);
 
     expect(screen.getByText(/Report a Lost Item/i)).toBeInTheDocument();
     expect(screen.queryByText(/Privacy & Security Warning:/i)).not.toBeInTheDocument();

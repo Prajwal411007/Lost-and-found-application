@@ -22,36 +22,32 @@ import {
   Trophy,
   Package,
   Navigation,
+  RotateCcw,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useGeolocation } from '@/contexts/LocationContext';
+import { useCategories, useCategoryItemCounts } from '@/hooks/useCategories';
+import { CategoryIcon } from '@/lib/categoryIcons';
 import { Item, Category } from '@/types';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 
-const categoryIcons: Record<string, React.FC<{ className?: string }>> = {
-  electronics: Smartphone,
-  'wallets-purses': Wallet,
-  keys: Key,
-  'bags-luggage': Briefcase,
-  'jewelry-watches': Watch,
-  'documents-ids': CreditCard,
-  'clothing-accessories': Shirt,
-  pets: Dog,
-  'books-stationery': BookOpen,
-  'sports-outdoors': Trophy,
-  other: Package,
-};
-
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { coords, requestLocation, openPrompt } = useGeolocation();
+  const {
+    categories,
+    isLoading: isLoadingCats,
+    isError: isErrorCats,
+    refetch: refetchCats,
+  } = useCategories();
+  const { data: categoryCounts = {} } = useCategoryItemCounts();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [locationQuery, setLocationQuery] = useState('');
 
-  const [categories, setCategories] = useState<Category[]>([]);
   const [recentItems, setRecentItems] = useState<Item[]>([]);
   const [stats, setStats] = useState({
     totalReported: 0,
@@ -69,13 +65,6 @@ export const Home: React.FC = () => {
       }
 
       try {
-        // Fetch categories
-        const { data: cats } = await supabase
-          .from('categories')
-          .select('*')
-          .order('name');
-        if (cats) setCategories(cats);
-
         // Fetch recent items
         const { data: items } = await supabase
           .from('items')
@@ -322,10 +311,10 @@ export const Home: React.FC = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Browse by Category
+              Popular Categories
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Filter listings by the type of item
+              Browse lost and found belongings by specific category
             </p>
           </div>
           <Link
@@ -337,25 +326,61 @@ export const Home: React.FC = () => {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-          {categories.map((cat) => {
-            const IconComponent = categoryIcons[cat.slug] || Package;
-            return (
-              <Link
-                key={cat.id}
-                to={`/browse?category=${cat.slug}`}
-                className="group p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-500 dark:hover:border-blue-500 shadow-sm hover:shadow-md transition text-center flex flex-col items-center"
+        {isErrorCats ? (
+          <div className="p-6 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-center space-y-3">
+            <p className="text-sm text-rose-700 dark:text-rose-300 font-medium">
+              Failed to load categories from database.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetchCats()}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition shadow-sm"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Retry Loading Categories</span>
+            </button>
+          </div>
+        ) : isLoadingCats ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 animate-pulse text-center flex flex-col items-center"
               >
-                <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-slate-900 group-hover:bg-blue-600 text-blue-600 dark:text-blue-400 group-hover:text-white flex items-center justify-center transition mb-3">
-                  <IconComponent className="w-6 h-6" />
-                </div>
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 line-clamp-1">
-                  {cat.name}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
+                <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-700 mb-3" />
+                <div className="w-20 h-3 bg-slate-200 dark:bg-slate-700 rounded mb-1.5" />
+                <div className="w-10 h-2 bg-slate-100 dark:bg-slate-700/60 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-center text-sm text-slate-500">
+            No categories available yet. Please run migration 003_more_categories.sql in Supabase.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            {categories.map((cat) => {
+              const count = categoryCounts[cat.id] || 0;
+              return (
+                <Link
+                  key={cat.id}
+                  to={`/browse?category=${cat.slug}`}
+                  className="group p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-500 dark:hover:border-blue-500 shadow-sm hover:shadow-md transition text-center flex flex-col items-center"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-slate-900 group-hover:bg-blue-600 text-blue-600 dark:text-blue-400 group-hover:text-white flex items-center justify-center transition mb-3">
+                    <CategoryIcon icon={cat.icon} slug={cat.slug} className="w-6 h-6" />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 line-clamp-1">
+                    {cat.name}
+                  </span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                    {count} {count === 1 ? 'item' : 'items'}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* Recent Items Grid */}
