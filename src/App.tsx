@@ -34,6 +34,8 @@ const DashboardPage = lazy(() => import('@/pages/dashboard/Dashboard').then(m =>
 const MessagesPage = lazy(() => import('@/pages/messages/Messages').then(m => ({ default: m.MessagesPage })));
 const AdminPage = lazy(() => import('@/pages/admin/Admin').then(m => ({ default: m.AdminPage })));
 const CampusPage = lazy(() => import('@/pages/campus/Campus').then(m => ({ default: m.CampusPage })));
+const MyItemsPage = lazy(() => import('@/pages/items/MyItems').then(m => ({ default: m.MyItemsPage })));
+const PublicTagPage = lazy(() => import('@/pages/items/PublicTag').then(m => ({ default: m.PublicTagPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +82,7 @@ export const App: React.FC = () => {
                       {/* Browse & Items */}
                       <Route path="/browse" element={<BrowsePage />} />
                       <Route path="/items/:id" element={<ItemDetailsPage />} />
+                      <Route path="/tag/:code" element={<PublicTagPage />} />
 
                       {/* Protected Reports */}
                       <Route
@@ -108,6 +111,14 @@ export const App: React.FC = () => {
                       />
 
                       {/* Protected Dashboard & Messages */}
+                      <Route
+                        path="/my-items"
+                        element={
+                          <ProtectedRoute>
+                            <MyItemsPage />
+                          </ProtectedRoute>
+                        }
+                      />
                       <Route
                         path="/dashboard"
                         element={

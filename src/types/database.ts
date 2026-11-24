@@ -217,3 +217,17 @@ export interface AbuseReport {
   reported_user?: Profile;
 }
 
+export interface RegisteredItem {
+  id: string;
+  owner_id: string;
+  name: string;
+  category_id?: string | null;
+  tag_code: string;
+  notes_private?: string | null;
+  lost_item_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  category?: Category | null;
+}
+
+

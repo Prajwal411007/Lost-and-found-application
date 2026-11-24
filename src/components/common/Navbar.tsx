@@ -16,6 +16,7 @@ import {
   MapPin,
   CheckCircle2,
   SlidersHorizontal,
+  QrCode,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -212,6 +213,13 @@ export const Navbar: React.FC = () => {
                           Dashboard
                         </Link>
                         <Link
+                          to="/my-items"
+                          className="flex items-center px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                        >
+                          <QrCode className="w-4 h-4 mr-2.5 text-blue-500" />
+                          My QR Items
+                        </Link>
+                        <Link
                           to="/messages"
                           className="flex items-center px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                         >
@@ -322,6 +330,12 @@ export const Navbar: React.FC = () => {
                   className="block px-3 py-2 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   My Dashboard
+                </Link>
+                <Link
+                  to="/my-items"
+                  className="block px-3 py-2 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  My QR Items
                 </Link>
                 <Link
                   to="/messages"

@@ -30,3 +30,14 @@ export const strictActionLimiter = rateLimit({
   },
 });
 
+export const tagContactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10, // Limit public QR tag contact messages to prevent spam
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many tag contact attempts from this IP. Please try again after 15 minutes.',
+  },
+});
+
+
