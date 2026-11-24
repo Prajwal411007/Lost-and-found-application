@@ -2,13 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   WEBSITE THEME & BACKGROUND DESIGN TOKENS
+   To adjust colors later, edit the CSS variables below:
+   - Light mode: Soft white to light blue-teal (#F4FAFC -> #E6F4F7)
+   - Dark mode: Deep navy to dark teal (#0B1220 -> #0F2A33)
+   ========================================================================== */
+
+:root {
+  /* Light Mode Background Gradient */
+  --bg-gradient-start: #FFFFFF;
+  --bg-gradient-mid: #F4FAFC;
+  --bg-gradient-end: #E6F4F7;
+  --bg-gradient: linear-gradient(145deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 45%, var(--bg-gradient-end) 100%);
+  --bg-base: #F4FAFC;
+
+  /* Card Surfaces & Elevated Containers */
+  --bg-surface: #FFFFFF;
+  --bg-surface-elevated: #FFFFFF;
+  --bg-surface-hover: #F8FAFC;
+  --bg-surface-muted: #F1F5F9;
+  --border-subtle: rgba(226, 232, 240, 0.85);
+  --card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+
+  /* Glassmorphism Header & Footer */
+  --navbar-bg: rgba(255, 255, 255, 0.82);
+  --footer-bg: rgba(255, 255, 255, 0.72);
+
+  /* Typography */
+  --text-main: #0F172A;
+  --text-muted: #64748B;
+}
+
+.dark {
+  /* Dark Mode Background Gradient: Deep navy (#0B1220) to dark teal (#0F2A33) */
+  --bg-gradient-start: #0B1220;
+  --bg-gradient-mid: #0D1E2B;
+  --bg-gradient-end: #0F2A33;
+  --bg-gradient: linear-gradient(145deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 45%, var(--bg-gradient-end) 100%);
+  --bg-base: #0B1220;
+
+  /* Card Surfaces & Elevated Containers */
+  --bg-surface: #132235;
+  --bg-surface-elevated: #182B42;
+  --bg-surface-hover: #1E344F;
+  --bg-surface-muted: #0D1929;
+  --border-subtle: rgba(51, 65, 85, 0.7);
+  --card-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.45), 0 2px 8px -1px rgba(0, 0, 0, 0.3);
+
+  /* Glassmorphism Header & Footer */
+  --navbar-bg: rgba(11, 18, 32, 0.82);
+  --footer-bg: rgba(15, 42, 51, 0.72);
+
+  /* Typography */
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+}
+
 @layer base {
+  html {
+    min-height: 100%;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
   body {
+    min-height: 100vh;
+    margin: 0;
+    background-color: var(--bg-base);
+    background-image: var(--bg-gradient);
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    color: var(--text-main);
+    transition: background-color 200ms ease, color 200ms ease;
     @apply selection:bg-blue-500 selection:text-white;
   }
 }
 
-/* Custom scrollbars */
+/* Mobile viewport optimization: use fixed pseudo-element to eliminate scroll jumps and tiling on mobile browsers */
+@media (max-width: 768px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -10;
+    background-color: var(--bg-base);
+    background-image: var(--bg-gradient);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    transition: background-color 200ms ease;
+  }
+}
+
+/* Accessibility: Respect prefers-reduced-motion (no animation, instant transitions) */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Custom themed scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -21,6 +126,8 @@
   border-radius: 4px;
 }
 .dark ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
-

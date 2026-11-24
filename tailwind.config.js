@@ -21,7 +21,25 @@ export default {
           500: '#14b8a6',
           600: '#0d9488',
           700: '#0f766e',
+        },
+        navy: {
+          950: '#0B1220',
+          900: '#0D1626',
+          800: '#111C2D',
+          700: '#162438',
+        },
+        darkteal: {
+          950: '#0F2A33',
+          900: '#133642',
+        },
+        surface: {
+          DEFAULT: 'var(--bg-surface)',
+          elevated: 'var(--bg-surface-elevated)',
+          muted: 'var(--bg-surface-muted)',
         }
+      },
+      backgroundImage: {
+        'app-gradient': 'var(--bg-gradient)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
@@ -30,4 +48,3 @@ export default {
   },
   plugins: [],
 }
-
