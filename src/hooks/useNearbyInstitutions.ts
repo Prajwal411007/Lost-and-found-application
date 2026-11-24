@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { queryOverpassDirectly } from '@/services/institutionsClient';
 
 export interface NearbyInstitution {
   id: string;
@@ -180,17 +181,99 @@ export function useNearbyInstitutions({
             'Request timed out while connecting to the institution service. Please retry.'
           );
         }
+
+        // On network failure to backend, try direct client Overpass fallback
+        try {
+          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types);
+          return {
+            institutions: directData,
+            count: directData.length,
+            centre: { lat: roundedLat, lng: roundedLng },
+            radius,
+            attribution: '© OpenStreetMap contributors',
+          };
+        } catch {
+          throw new InstitutionApiError(
+            'SERVICE_UNREACHABLE',
+            'Failed to connect to the backend API. Please ensure the backend server is running on port 3001 or check VITE_API_URL.'
+          );
+        }
+      }
+
+      // Check Content-Type BEFORE calling res.json() to prevent "Unexpected token '<', <!doctype" syntax errors
+      const contentType = res.headers?.get ? (res.headers.get('content-type') || '') : '';
+      const isHtml =
+        contentType.includes('text/html') ||
+        contentType.includes('application/xhtml+xml');
+
+      if (isHtml) {
+        // Received HTML (e.g. Vercel SPA rewrite to index.html or 404 page).
+        // Fall back gracefully to direct OpenStreetMap query:
+        try {
+          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types);
+          if (directData && directData.length > 0) {
+            return {
+              institutions: directData,
+              count: directData.length,
+              centre: { lat: roundedLat, lng: roundedLng },
+              radius,
+              attribution: '© OpenStreetMap contributors',
+            };
+          }
+        } catch {
+          // Fall through to error
+        }
+
         throw new InstitutionApiError(
           'SERVICE_UNREACHABLE',
-          'Failed to connect to the backend API. Please ensure the backend server is running on port 3001 or check VITE_API_URL.'
+          'Nearby institutions endpoint returned an HTML page and the direct fallback could not complete. Please retry.',
+          res.status || 404
         );
       }
 
+      // Safely parse JSON
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (parseErr: any) {
+        // Parsing failed (e.g. unformatted body or HTML without proper Content-Type header): fall back to direct query
+        try {
+          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types);
+          return {
+            institutions: directData,
+            count: directData.length,
+            centre: { lat: roundedLat, lng: roundedLng },
+            radius,
+            attribution: '© OpenStreetMap contributors',
+          };
+        } catch {
+          throw new InstitutionApiError(
+            'SERVICE_UNREACHABLE',
+            `Failed to parse server response as JSON: ${parseErr.message}`,
+            res.status
+          );
+        }
+      }
+
       if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        const serverMessage = errJson.error || errJson.details;
+        const serverMessage = data.error || data.details || data.message;
 
         if (res.status === 404) {
+          try {
+            const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types);
+            if (directData && directData.length > 0) {
+              return {
+                institutions: directData,
+                count: directData.length,
+                centre: { lat: roundedLat, lng: roundedLng },
+                radius,
+                attribution: '© OpenStreetMap contributors',
+              };
+            }
+          } catch {
+            // Fall through to error
+          }
+
           throw new InstitutionApiError(
             'SERVICE_UNREACHABLE',
             'Nearby institutions service is not reachable (HTTP 404). If running locally, please ensure the backend server is running on port 3001. In production on Vercel, set the VITE_API_URL environment variable.',
@@ -237,7 +320,7 @@ export function useNearbyInstitutions({
         );
       }
 
-      return res.json();
+      return data;
     },
     enabled: enabled && roundedLat != null && roundedLng != null,
     staleTime: 1000 * 60 * 5, // 5 minutes client cache

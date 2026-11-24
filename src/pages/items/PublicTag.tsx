@@ -62,6 +62,10 @@ export const PublicTagPage: React.FC = () => {
         setError(null);
 
         const res = await fetch(`/api/tags/${encodeURIComponent(code)}`);
+        const contentType = res.headers?.get ? (res.headers.get('content-type') || '') : 'application/json';
+        if (contentType.includes('text/html')) {
+          throw new Error('Public tag service is currently unavailable.');
+        }
         const data = await res.json();
 
         if (!res.ok) {

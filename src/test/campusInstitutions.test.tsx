@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CampusPage } from '../pages/campus/Campus';
+import { clearInstitutionsClientCache } from '@/services/institutionsClient';
 
 // Mock LeafletMap to render accessible container without real DOM WebGL/Canvas
 vi.mock('@/components/common/LeafletMap', () => ({
@@ -81,6 +82,7 @@ describe('Campus Mode - Nearby Institutions Feature', () => {
       defaultOptions: { queries: { retry: false } },
     });
     vi.clearAllMocks();
+    clearInstitutionsClientCache();
 
     global.fetch = vi.fn((url: any) => {
       if (url.toString().includes('/api/nearby-institutions')) {
@@ -186,16 +188,66 @@ describe('Campus Mode - Nearby Institutions Feature', () => {
     expect(searchInput).toHaveValue('Cambridge');
   });
 
-  it('displays 404 Service Not Reachable error with hint and Retry button', async () => {
+  it('handles HTML response from Vercel without throwing JSON syntax error and falls back to direct Overpass query', async () => {
+    global.fetch = vi.fn((url: any) => {
+      if (url.toString().includes('/api/nearby-institutions')) {
+        // Simulates Vercel SPA index.html rewrite (status 200 with text/html)
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
+          text: () => Promise.resolve('<!doctype html><html><body>Root SPA Fallback</body></html>'),
+        } as Response);
+      }
+
+      if (url.toString().includes('overpass')) {
+        // Direct Overpass query succeeds
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: () =>
+            Promise.resolve({
+              elements: [
+                {
+                  type: 'node',
+                  id: 999,
+                  lat: 37.428,
+                  lon: -122.17,
+                  tags: { name: 'Stanford Direct Fallback', amenity: 'university' },
+                },
+              ],
+            }),
+        } as Response);
+      }
+
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as any);
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Verify it didn't crash with "Unexpected token '<', <!doctype" and instead rendered fallback institution
+    expect(await screen.findByText('Stanford Direct Fallback')).toBeInTheDocument();
+  });
+
+  it('displays 404 Service Not Reachable error with hint and Retry button when both API and fallback fail', async () => {
     global.fetch = vi.fn((url: any) => {
       if (url.toString().includes('/api/nearby-institutions')) {
         return Promise.resolve({
           ok: false,
           status: 404,
+          headers: new Headers({ 'content-type': 'application/json' }),
           json: () => Promise.resolve({ error: 'Not Found' }),
         } as Response);
       }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as any);
+      // Direct Overpass also rejected
+      return Promise.reject(new Error('Overpass connection failed'));
     });
 
     render(
@@ -217,6 +269,7 @@ describe('Campus Mode - Nearby Institutions Feature', () => {
         return Promise.resolve({
           ok: false,
           status: 429,
+          headers: new Headers({ 'content-type': 'application/json' }),
           json: () => Promise.resolve({ error: 'Too Many Requests' }),
         } as Response);
       }
@@ -241,6 +294,7 @@ describe('Campus Mode - Nearby Institutions Feature', () => {
         return Promise.resolve({
           ok: false,
           status: 502,
+          headers: new Headers({ 'content-type': 'application/json' }),
           json: () => Promise.resolve({ error: 'OpenStreetMap query failed or timed out' }),
         } as Response);
       }
