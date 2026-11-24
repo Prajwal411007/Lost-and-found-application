@@ -8,7 +8,7 @@ export interface MapMarker {
   lat: number;
   lng: number;
   title: string;
-  type?: 'lost' | 'found' | 'building' | 'user' | 'target';
+  type?: 'lost' | 'found' | 'building' | 'user' | 'target' | 'university' | 'college' | 'school' | 'other' | 'search-center';
   popupHtml?: string;
   onClick?: () => void;
 }
@@ -18,7 +18,11 @@ interface LeafletMapProps {
   zoom?: number;
   markers?: MapMarker[];
   routeCoordinates?: [number, number][];
+  circleCenter?: [number, number];
+  circleRadiusMeters?: number;
+  focusMarkerId?: string | null;
   onLocationSelect?: (lat: number, lng: number) => void;
+  onMapMoveEnd?: (center: { lat: number; lng: number }, zoom: number) => void;
   className?: string;
   height?: string;
   readOnly?: boolean;
@@ -31,7 +35,11 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   zoom = 13,
   markers = [],
   routeCoordinates,
+  circleCenter,
+  circleRadiusMeters,
+  focusMarkerId,
   onLocationSelect,
+  onMapMoveEnd,
   className = '',
   height = '350px',
   readOnly = false,
@@ -43,22 +51,25 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
+  const circleLayerRef = useRef<L.Circle | null>(null);
+  const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
 
   const { coords, status, requestLocation, clearLocation } = useGeolocation();
   const [isLocating, setIsLocating] = useState(false);
 
   const createCustomIcon = (type: MapMarker['type'] = 'lost') => {
-    if (type === 'user') {
+    if (type === 'user' || type === 'search-center') {
+      const ringColor = type === 'search-center' ? '#0d9488' : '#0284c7';
       return L.divIcon({
         className: 'custom-user-location-marker',
         html: `
-          <div style="position: relative; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; width: 26px; height: 26px; background-color: #0284c7; border-radius: 50%; opacity: 0.35; transform: scale(1.4); animation: pulse 2s infinite;"></div>
-            <div style="width: 16px; height: 16px; background-color: #0284c7; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>
+          <div style="position: relative; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 28px; height: 28px; background-color: ${ringColor}; border-radius: 50%; opacity: 0.35; transform: scale(1.4); animation: pulse 2s infinite;"></div>
+            <div style="width: 16px; height: 16px; background-color: ${ringColor}; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>
           </div>
         `,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
         popupAnchor: [0, -14],
       });
     }
@@ -68,6 +79,10 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
     if (type === 'found') color = '#0d9488'; // Teal
     if (type === 'building') color = '#7c3aed'; // Purple
     if (type === 'target') color = '#ea580c'; // Orange
+    if (type === 'university') color = '#059669'; // Emerald
+    if (type === 'college') color = '#2563eb'; // Blue
+    if (type === 'school') color = '#d97706'; // Amber
+    if (type === 'other') color = '#0891b2'; // Cyan
 
     return L.divIcon({
       className: 'custom-leaflet-marker',
@@ -123,6 +138,13 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
         });
       }
 
+      if (onMapMoveEnd) {
+        map.on('moveend', () => {
+          const c = map.getCenter();
+          onMapMoveEnd({ lat: c.lat, lng: c.lng }, map.getZoom());
+        });
+      }
+
       mapInstanceRef.current = map;
     }
 
@@ -143,6 +165,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
     if (!mapInstanceRef.current || !markersLayerRef.current) return;
 
     markersLayerRef.current.clearLayers();
+    markersMapRef.current.clear();
 
     markers.forEach((m) => {
       const marker = L.marker([m.lat, m.lng], {
@@ -160,13 +183,51 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
       }
 
       marker.addTo(markersLayerRef.current!);
+      markersMapRef.current.set(m.id, marker);
     });
 
-    if (markers.length > 1 && !routeCoordinates) {
+    if (markers.length > 1 && !routeCoordinates && !circleCenter) {
       const group = L.featureGroup(markers.map((m) => L.marker([m.lat, m.lng])));
       mapInstanceRef.current.fitBounds(group.getBounds().pad(0.15));
     }
   }, [markers]);
+
+  // Focus specific marker (e.g. from nearby institution list item click)
+  useEffect(() => {
+    if (!focusMarkerId || !mapInstanceRef.current) return;
+    const marker = markersMapRef.current.get(focusMarkerId);
+    if (marker) {
+      mapInstanceRef.current.flyTo(marker.getLatLng(), Math.max(mapInstanceRef.current.getZoom(), 16), {
+        animate: true,
+        duration: 0.8,
+      });
+      setTimeout(() => {
+        marker.openPopup();
+      }, 850);
+    }
+  }, [focusMarkerId]);
+
+  // Update radius circle around centre point
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (circleLayerRef.current) {
+      circleLayerRef.current.remove();
+      circleLayerRef.current = null;
+    }
+
+    if (circleCenter && circleRadiusMeters) {
+      circleLayerRef.current = L.circle(circleCenter, {
+        radius: circleRadiusMeters,
+        color: '#0d9488',
+        weight: 2,
+        opacity: 0.8,
+        fillColor: '#0d9488',
+        fillOpacity: 0.08,
+        dashArray: '6, 6',
+      }).addTo(mapInstanceRef.current);
+    }
+  }, [circleCenter?.[0], circleCenter?.[1], circleRadiusMeters]);
 
   // Update user location marker ("You are here")
   useEffect(() => {

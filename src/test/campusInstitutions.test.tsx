@@ -1,0 +1,188 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { CampusPage } from '../pages/campus/Campus';
+
+// Mock LeafletMap to render accessible container without real DOM WebGL/Canvas
+vi.mock('@/components/common/LeafletMap', () => ({
+  LeafletMap: ({ markers, onMapMoveEnd }: any) => (
+    <div data-testid="leaflet-map-mock">
+      {markers.map((m: any) => (
+        <div key={m.id} data-testid={`marker-${m.id}`} data-title={m.title} />
+      ))}
+      <button
+        data-testid="mock-pan-map"
+        onClick={() => onMapMoveEnd?.({ lat: 37.45, lng: -122.2 }, 15)}
+      >
+        Simulate Map Pan
+      </button>
+    </div>
+  ),
+}));
+
+// Mock Geolocation Context as denied / no permission
+vi.mock('@/contexts/LocationContext', () => ({
+  useGeolocation: () => ({
+    coords: null,
+    status: 'denied',
+    generalArea: null,
+    requestLocation: vi.fn(),
+    clearLocation: vi.fn(),
+    openPrompt: vi.fn(),
+  }),
+}));
+
+// Mock Supabase
+vi.mock('@/lib/supabase', () => ({
+  isSupabaseConfigured: false,
+  supabase: null,
+}));
+
+describe('Campus Mode - Nearby Institutions Feature', () => {
+  let queryClient: QueryClient;
+
+  const mockInstitutions = [
+    {
+      id: 'inst-1',
+      name: 'Stanford University',
+      type: 'university',
+      address: '450 Jane Stanford Way, Stanford',
+      lat: 37.4275,
+      lng: -122.1697,
+      website: 'https://stanford.edu',
+      distance: 120,
+    },
+    {
+      id: 'inst-2',
+      name: 'Palo Alto High School',
+      type: 'school',
+      address: '50 Embarcadero Rd, Palo Alto',
+      lat: 37.435,
+      lng: -122.155,
+      website: 'https://paly.net',
+      distance: 1450,
+    },
+    {
+      id: 'inst-3',
+      name: 'Foothill College Campus',
+      type: 'college',
+      address: 'El Monte Rd, Los Altos Hills',
+      lat: 37.36,
+      lng: -122.12,
+      website: 'https://foothill.edu',
+      distance: 4200,
+    },
+  ];
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.clearAllMocks();
+
+    global.fetch = vi.fn((url: any) => {
+      if (url.toString().includes('/api/nearby-institutions')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              institutions: mockInstitutions,
+              count: mockInstitutions.length,
+              centre: { lat: 37.4275, lng: -122.1697 },
+              radius: 2000,
+              attribution: '© OpenStreetMap contributors',
+            }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve([]),
+      } as Response);
+    });
+  });
+
+  it('renders nearby institutions tab, type filter chips, and radius selector', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Verify Tab Header
+    expect(await screen.findByText('Nearby Institutions')).toBeInTheDocument();
+    expect(screen.getByText('Campus Directory')).toBeInTheDocument();
+
+    // Verify Filter Chips
+    expect(screen.getByRole('button', { name: /Universities/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Colleges/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Schools/i })).toBeInTheDocument();
+
+    // Verify Radius Selector
+    expect(screen.getByLabelText(/Search radius/i)).toBeInTheDocument();
+
+    // Verify institutions rendered sorted nearest first
+    expect((await screen.findAllByText('Stanford University')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Palo Alto High School')).toBeInTheDocument();
+    expect(screen.getByText('about 120 m away')).toBeInTheDocument();
+    expect(screen.getByText(/about 1\.[45] km away/i)).toBeInTheDocument();
+  });
+
+  it('filters institutions in real-time when name filter input is typed', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect((await screen.findAllByText('Stanford University')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Palo Alto High School')).toBeInTheDocument();
+
+    // Type in filter input
+    const filterInput = screen.getByPlaceholderText(/Filter by name/i);
+    fireEvent.change(filterInput, { target: { value: 'High School' } });
+
+    // Stanford button in list should be gone, Palo Alto High should remain
+    expect(screen.queryByRole('button', { name: 'Stanford University' })).not.toBeInTheDocument();
+    expect(screen.getByText('Palo Alto High School')).toBeInTheDocument();
+  });
+
+  it('shows "Search This Area" button after user pans the map', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Click mock pan map button
+    const panBtn = await screen.findByTestId('mock-pan-map');
+    fireEvent.click(panBtn);
+
+    // "Search This Area" button should appear
+    expect(await screen.findByRole('button', { name: /Search This Area/i })).toBeInTheDocument();
+  });
+
+  it('allows manual city or area search without requiring geolocation permission', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Check manual place search input
+    const searchInput = await screen.findByPlaceholderText(/Search city or area/i);
+    expect(searchInput).toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'Cambridge' } });
+    expect(searchInput).toHaveValue('Cambridge');
+  });
+});

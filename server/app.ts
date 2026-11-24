@@ -14,6 +14,7 @@ import { adminRouter } from './routes/admin.js';
 import { campusRouter } from './routes/campus.js';
 import { statsRouter } from './routes/stats.js';
 import { tagsRouter } from './routes/tags.js';
+import { institutionsRouter } from './routes/institutions.js';
 import { isServerSupabaseConfigured } from './config/supabase.js';
 
 dotenv.config();
@@ -61,6 +62,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/campus', campusRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/tags', tagsRouter);
+app.use('/api/nearby-institutions', institutionsRouter);
 
 // Centralized Error Handling
 app.use(errorHandler);
