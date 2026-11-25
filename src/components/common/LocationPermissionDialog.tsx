@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useGeolocation } from '@/contexts/LocationContext';
 import { MapPin, Navigation, Shield, X, Loader2, Sparkles } from 'lucide-react';
 
 export const LocationPermissionDialog: React.FC = () => {
+  const { t } = useTranslation('common');
   const {
     coords,
     status,
@@ -120,11 +122,11 @@ export const LocationPermissionDialog: React.FC = () => {
               id="location-dialog-title"
               className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight"
             >
-              Find Items Near You
+              {t('location_prompt.title', 'Find Items Near You')}
             </h2>
             <p className="text-xs text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider mt-1 flex items-center justify-center">
               <Sparkles className="w-3.5 h-3.5 mr-1" />
-              Proximity Discovery
+              {t('location_prompt.badge_optional', 'Optional')}
             </p>
           </div>
         </div>
@@ -132,12 +134,12 @@ export const LocationPermissionDialog: React.FC = () => {
         {/* Description & Privacy explanation */}
         <div id="location-dialog-desc" className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <p>
-            FindIt uses your approximate location to highlight lost and found listings in your local neighborhood, calculate distances, and organize items by proximity.
+            {t('location_prompt.description')}
           </p>
           <div className="p-3.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 flex items-start space-x-2.5 text-xs text-blue-900 dark:text-blue-200">
             <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
             <p>
-              <strong>Privacy first:</strong> Location is completely optional. Raw coordinates are never shared or published, and your location is remembered strictly for this browser session.
+              <strong>{t('location_prompt.why_title')}:</strong> {t('location_prompt.reason_3')}
             </p>
           </div>
         </div>
@@ -149,7 +151,7 @@ export const LocationPermissionDialog: React.FC = () => {
             onClick={dismissPrompt}
             className="w-full sm:w-1/2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition"
           >
-            Not Now
+            {t('location_prompt.maybe_later_btn', 'Maybe Later')}
           </button>
           <button
             ref={allowBtnRef}
@@ -161,12 +163,12 @@ export const LocationPermissionDialog: React.FC = () => {
             {status === 'requesting' ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Requesting...
+                {t('location_prompt.requesting', 'Detecting location...')}
               </>
             ) : (
               <>
                 <MapPin className="w-4 h-4 mr-1.5" />
-                Allow Location
+                {t('location_prompt.allow_btn', 'Allow Location')}
               </>
             )}
           </button>

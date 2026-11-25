@@ -27,6 +27,7 @@ export interface Profile {
   avatar_url: string | null;
   phone: string | null;
   contact_preference: 'in_app' | 'email' | 'phone';
+  preferred_language?: 'en' | 'kn' | 'hi' | null;
   role: UserRole;
   is_banned: boolean;
   created_at: string;
@@ -39,6 +40,7 @@ export interface Category {
   slug: string;
   icon: string | null;
   description: string | null;
+  name_translations?: Record<string, string> | null;
   created_at: string;
 }
 

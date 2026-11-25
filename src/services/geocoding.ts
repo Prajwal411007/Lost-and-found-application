@@ -7,11 +7,11 @@ const geocodeCache = new Map<string, NominatimPlace[]>();
  * Searches locations using OpenStreetMap Nominatim with polite headers,
  * caching, and debouncing. Never forces browser geolocation.
  */
-export async function searchPlaces(query: string): Promise<NominatimPlace[]> {
+export async function searchPlaces(query: string, lang: string = 'en'): Promise<NominatimPlace[]> {
   const trimmed = query.trim();
   if (!trimmed || trimmed.length < 2) return [];
 
-  const cacheKey = trimmed.toLowerCase();
+  const cacheKey = `${lang}_${trimmed.toLowerCase()}`;
   if (geocodeCache.has(cacheKey)) {
     return geocodeCache.get(cacheKey)!;
   }
@@ -27,6 +27,7 @@ export async function searchPlaces(query: string): Promise<NominatimPlace[]> {
     const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
       headers: {
         'Accept': 'application/json',
+        'Accept-Language': lang,
         'User-Agent': 'FindIt-GlobalLostAndFoundPlatform/1.0 (contact@lostandfound.local)',
       },
     });
@@ -48,8 +49,8 @@ export async function searchPlaces(query: string): Promise<NominatimPlace[]> {
 /**
  * Reverse geocodes coordinates to address details with caching
  */
-export async function reverseGeocode(lat: number, lon: number): Promise<NominatimPlace | null> {
-  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+export async function reverseGeocode(lat: number, lon: number, lang: string = 'en'): Promise<NominatimPlace | null> {
+  const cacheKey = `${lang}_${lat.toFixed(4)},${lon.toFixed(4)}`;
   if (geocodeCache.has(cacheKey)) {
     const cached = geocodeCache.get(cacheKey);
     return cached && cached.length > 0 ? cached[0] : null;
@@ -66,6 +67,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<Nominati
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
       headers: {
         'Accept': 'application/json',
+        'Accept-Language': lang,
         'User-Agent': 'FindIt-GlobalLostAndFoundPlatform/1.0 (contact@lostandfound.local)',
       },
     });

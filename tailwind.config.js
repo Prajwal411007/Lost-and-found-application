@@ -42,7 +42,7 @@ export default {
         'app-gradient': 'var(--bg-gradient)',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Inter', 'Noto Sans Kannada', 'Noto Sans Devanagari', 'system-ui', '-apple-system', 'sans-serif'],
       }
     },
   },

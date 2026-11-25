@@ -78,8 +78,10 @@ function buildAddress(tags: Record<string, string>): string | undefined {
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-function extractInstitutionName(tags: Record<string, string>, type: string): { name: string; isUnnamed: boolean } {
+function extractInstitutionName(tags: Record<string, string>, type: string, lang: string = 'en'): { name: string; isUnnamed: boolean } {
+  const langKey = lang && lang !== 'en' ? `name:${lang}` : null;
   const resolved =
+    (langKey ? tags[langKey]?.trim() : null) ||
     tags.name?.trim() ||
     tags['name:en']?.trim() ||
     tags.official_name?.trim() ||
@@ -102,7 +104,8 @@ async function queryNominatimFallback(
   lat: number,
   lng: number,
   radiusMeters: number,
-  typesFilter?: string[]
+  typesFilter?: string[],
+  lang: string = 'en'
 ): Promise<NearbyInstitution[]> {
   const deltaLat = radiusMeters / 111320;
   const deltaLng = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
@@ -126,6 +129,7 @@ async function queryNominatimFallback(
           headers: {
             'User-Agent': 'FindIt-Global-Platform/1.0 (Lost & Found Non-Profit; contact: info@findit.org)',
             'Accept': 'application/json',
+            'Accept-Language': lang,
           },
           signal: controller.signal,
         });
@@ -216,7 +220,8 @@ export default async function handler(req: any, res: any) {
   const roundedLat = Math.round(lat * 1000) / 1000;
   const roundedLng = Math.round(lng * 1000) / 1000;
   const sortedTypes = types ? [...types].sort().join(',') : 'all';
-  const cacheKey = `${roundedLat}_${roundedLng}_${radius}_${sortedTypes}`;
+  const reqLang = (query.lang as string) || (req.headers['accept-language']?.startsWith('kn') ? 'kn' : req.headers['accept-language']?.startsWith('hi') ? 'hi' : 'en');
+  const cacheKey = `${reqLang}_${roundedLat}_${roundedLng}_${radius}_${sortedTypes}`;
 
   // Check cache with differentiated TTL
   const cached = cache.get(cacheKey);
@@ -322,7 +327,7 @@ export default async function handler(req: any, res: any) {
     const itemLng = el.lon ?? el.center?.lon;
     if (itemLat === undefined || itemLng === undefined) continue;
 
-    const { name, isUnnamed } = extractInstitutionName(tags, instType);
+    const { name, isUnnamed } = extractInstitutionName(tags, instType, reqLang);
 
     const dedupKey = `${name.toLowerCase()}_${Math.round(itemLat * 100) / 100}_${Math.round(itemLng * 100) / 100}`;
     if (seenKeys.has(dedupKey)) continue;
@@ -348,7 +353,7 @@ export default async function handler(req: any, res: any) {
   // If Overpass returned 0 results or failed, attempt Nominatim fallback
   if (parsed.length === 0) {
     try {
-      const nomResults = await queryNominatimFallback(lat, lng, radius, types);
+      const nomResults = await queryNominatimFallback(lat, lng, radius, types, reqLang);
       if (nomResults.length > 0) {
         cache.set(cacheKey, { data: nomResults, timestamp: Date.now() });
         return res.status(200).json({

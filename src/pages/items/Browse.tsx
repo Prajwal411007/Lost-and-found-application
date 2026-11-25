@@ -16,9 +16,11 @@ import {
   Loader2,
   RotateCcw,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { Item, Category } from '@/types';
-import { formatDate, formatRelativeTime, haversineDistance } from '@/lib/utils';
+import { formatRelativeTime, haversineDistance } from '@/lib/utils';
+import { getCategoryDisplayName, formatLocalizedDistance, formatLocalizedNumber } from '@/lib/i18nHelpers';
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useCategories } from '@/hooks/useCategories';
 import { CategoryIcon } from '@/lib/categoryIcons';
@@ -26,6 +28,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 
 export const BrowsePage: React.FC = () => {
+  const { t, i18n } = useTranslation(['browse', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL state
@@ -101,52 +104,54 @@ export const BrowsePage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Toggle Near Me filter
+  // Toggle "Near Me" filter
   const handleToggleNearMe = async () => {
     if (nearMeParam) {
       updateFilter('nearMe', undefined);
-      if (sortByParam === 'nearest') {
-        updateFilter('sort', 'newest');
-      }
+      updateFilter('sort', 'newest');
+      return;
+    }
+
+    if (userCoords) {
+      updateFilter('nearMe', 'true');
+      updateFilter('sort', 'nearest');
+      return;
+    }
+
+    if (geoStatus === 'denied') {
+      setShowDeniedAlert(true);
+      return;
+    }
+
+    setIsActivatingNearMe(true);
+    const loc = await requestLocation();
+    setIsActivatingNearMe(false);
+
+    if (loc) {
+      updateFilter('nearMe', 'true');
+      updateFilter('sort', 'nearest');
+    } else if ((geoStatus as string) === 'denied') {
+      setShowDeniedAlert(true);
     } else {
-      setIsActivatingNearMe(true);
-      setShowDeniedAlert(false);
-      try {
-        let loc = userCoords;
-        if (!loc) {
-          loc = await requestLocation();
-        }
-        if (loc) {
-          updateFilter('nearMe', 'true');
-          if (sortByParam !== 'oldest') {
-            updateFilter('sort', 'nearest');
-          }
-        } else {
-          setShowDeniedAlert(true);
-        }
-      } catch (err) {
-        setShowDeniedAlert(true);
-      } finally {
-        setIsActivatingNearMe(false);
-      }
+      openPrompt();
     }
   };
 
-  // Fetch items from Supabase
+  // Main data fetcher
   useEffect(() => {
     const fetchItems = async () => {
-      setIsLoading(true);
       if (!isSupabaseConfigured || !supabase) {
         setIsLoading(false);
         return;
       }
 
+      setIsLoading(true);
       try {
         let query = supabase
           .from('items')
           .select('*, category:categories(*)', { count: 'exact' });
 
-        // Filter by type
+        // Filter by item type (lost or found)
         if (typeParam !== 'all') {
           query = query.eq('type', typeParam);
         }
@@ -159,12 +164,14 @@ export const BrowsePage: React.FC = () => {
           }
         }
 
-        // Filter by search text
+        // Filter by text search query
         if (queryParam) {
-          query = query.or(`title.ilike.%${queryParam}%,description.ilike.%${queryParam}%`);
+          query = query.or(
+            `title.ilike.%${queryParam}%,description.ilike.%${queryParam}%,location_city.ilike.%${queryParam}%`
+          );
         }
 
-        // Filter by location text
+        // Filter by location string
         if (locationParam) {
           query = query.or(
             `location_city.ilike.%${locationParam}%,location_state.ilike.%${locationParam}%,location_country.ilike.%${locationParam}%,location_landmark.ilike.%${locationParam}%`
@@ -278,10 +285,10 @@ export const BrowsePage: React.FC = () => {
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-            Browse Lost & Found Items
+            {t('browse:title')}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {totalCount} total listings found across worldwide locations
+            {t('browse:results.count', { count: totalCount, defaultValue: `${totalCount} items found` })}
           </p>
         </div>
 
@@ -289,15 +296,15 @@ export const BrowsePage: React.FC = () => {
         <div className="flex items-center space-x-2">
           <Link
             to="/report/lost"
-            className="px-4 py-2 text-xs font-bold rounded-xl text-rose-700 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 hover:bg-rose-100 transition shadow-sm"
+            className="px-4 py-2 text-xs font-bold rounded-xl text-rose-700 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 hover:bg-rose-100 transition shadow-sm whitespace-nowrap"
           >
-            Report Lost
+            {t('common:nav.report_lost')}
           </Link>
           <Link
             to="/report/found"
-            className="px-4 py-2 text-xs font-bold rounded-xl text-teal-700 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 hover:bg-teal-100 transition shadow-sm"
+            className="px-4 py-2 text-xs font-bold rounded-xl text-teal-700 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 hover:bg-teal-100 transition shadow-sm whitespace-nowrap"
           >
-            Report Found
+            {t('common:nav.report_found')}
           </Link>
         </div>
       </div>
@@ -312,7 +319,7 @@ export const BrowsePage: React.FC = () => {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by keywords, brand, model..."
+              placeholder={t('browse:filters.search_placeholder')}
               className="w-full pl-10 pr-8 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
             />
             {searchInput && (
@@ -332,7 +339,7 @@ export const BrowsePage: React.FC = () => {
               type="text"
               value={locationParam}
               onChange={(e) => updateFilter('location', e.target.value)}
-              placeholder="Filter by city, state, country..."
+              placeholder={t('common:nav.campus', 'City or Campus')}
               className="w-full pl-10 pr-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -341,10 +348,10 @@ export const BrowsePage: React.FC = () => {
           <div className="sm:col-span-2">
             <button
               onClick={() => setIsFilterDrawerOpen(!isFilterDrawerOpen)}
-              className="w-full h-full min-h-[38px] flex items-center justify-center px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-100 transition"
+              className="w-full h-full min-h-[38px] flex items-center justify-center px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-100 transition cursor-pointer"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
-              <span>Filters {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ''}</span>
+              <span>{t('common:actions.filter')} {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ''}</span>
             </button>
           </div>
         </div>
@@ -356,7 +363,7 @@ export const BrowsePage: React.FC = () => {
             type="button"
             onClick={handleToggleNearMe}
             disabled={isActivatingNearMe}
-            className={`px-3 py-1 rounded-lg font-semibold flex items-center space-x-1.5 transition text-xs ${
+            className={`px-3 py-1 rounded-lg font-semibold flex items-center space-x-1.5 transition text-xs cursor-pointer ${
               nearMeParam
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60'
@@ -367,22 +374,26 @@ export const BrowsePage: React.FC = () => {
             ) : (
               <Navigation className={`w-3.5 h-3.5 ${nearMeParam ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
             )}
-            <span>Near Me</span>
+            <span>{t('browse:filters.use_location')}</span>
           </button>
 
           {/* Type Toggles */}
           <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-900/80 p-0.5 rounded-lg">
-            {(['all', 'lost', 'found'] as const).map((t) => (
+            {(['all', 'lost', 'found'] as const).map((tp) => (
               <button
-                key={t}
-                onClick={() => updateFilter('type', t)}
-                className={`px-2.5 py-1 rounded-md capitalize font-semibold transition ${
-                  typeParam === t
+                key={tp}
+                onClick={() => updateFilter('type', tp)}
+                className={`px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
+                  typeParam === tp
                     ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
-                {t === 'all' ? 'All Items' : t}
+                {tp === 'all'
+                  ? t('browse:filters.type_all')
+                  : tp === 'lost'
+                  ? t('common:status.lost')
+                  : t('common:status.found')}
               </button>
             ))}
           </div>
@@ -392,13 +403,13 @@ export const BrowsePage: React.FC = () => {
             <select
               value={categoryParam}
               onChange={(e) => updateFilter('category', e.target.value)}
-              aria-label="Filter by category"
+              aria-label={t('browse:filters.category_all')}
               className="py-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-300"
             >
-              <option value="">All Categories</option>
+              <option value="">{t('browse:filters.category_all')}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.slug}>
-                  {c.name}
+                  {getCategoryDisplayName(c, i18n.language)}
                 </option>
               ))}
             </select>
@@ -406,9 +417,9 @@ export const BrowsePage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => refetchCategories()}
-                title="Retry loading categories"
+                title={t('common:actions.retry')}
                 className="p-1 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 hover:text-rose-700 text-xs"
-                aria-label="Retry loading categories"
+                aria-label={t('common:actions.retry')}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
@@ -421,10 +432,10 @@ export const BrowsePage: React.FC = () => {
             onChange={(e) => updateFilter('dateRange', e.target.value)}
             className="py-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-300"
           >
-            <option value="all">Any Date</option>
-            <option value="today">Today</option>
-            <option value="7d">Past 7 Days</option>
-            <option value="30d">Past 30 Days</option>
+            <option value="all">{t('browse:filters.date_all')}</option>
+            <option value="today">{t('browse:filters.date_today')}</option>
+            <option value="7d">{t('browse:filters.date_week')}</option>
+            <option value="30d">{t('browse:filters.date_month')}</option>
           </select>
 
           {/* Sort By Dropdown */}
@@ -433,17 +444,17 @@ export const BrowsePage: React.FC = () => {
             onChange={(e) => updateFilter('sort', e.target.value)}
             className="py-1 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-300 ml-auto"
           >
-            {userCoords && <option value="nearest">Nearest First</option>}
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
+            {userCoords && <option value="nearest">{t('browse:filters.sort_closest')}</option>}
+            <option value="newest">{t('browse:filters.sort_newest')}</option>
+            <option value="oldest">{t('browse:filters.sort_oldest')}</option>
           </select>
 
           {activeFiltersCount > 0 && (
             <button
               onClick={clearAllFilters}
-              className="text-xs text-rose-600 hover:underline font-semibold ml-2"
+              className="text-xs text-rose-600 hover:underline font-semibold ml-2 cursor-pointer"
             >
-              Reset
+              {t('common:actions.clear_filters')}
             </button>
           )}
         </div>
@@ -455,7 +466,7 @@ export const BrowsePage: React.FC = () => {
           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1 flex-1">
             <div className="flex items-center justify-between">
-              <p className="font-bold">Location Permission Blocked</p>
+              <p className="font-bold">{t('common:location_prompt.error_denied')}</p>
               <button
                 type="button"
                 onClick={() => setShowDeniedAlert(false)}
@@ -466,7 +477,7 @@ export const BrowsePage: React.FC = () => {
               </button>
             </div>
             <p className="leading-relaxed text-[11px]">
-              To search items near your current location: click the padlock or site settings icon next to the address in your browser URL bar, change <strong>Location</strong> to <strong>Allow</strong>, and refresh the page. You can also filter by city or region manually using the location search box above.
+              {t('common:location_prompt.error_denied')}
             </p>
           </div>
         </div>
@@ -481,30 +492,30 @@ export const BrowsePage: React.FC = () => {
             </div>
             <div>
               <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                <span>Showing items near you</span>
+                <span>{t('browse:results.near_location')}</span>
                 <span className="text-slate-500 dark:text-slate-400 font-normal">({generalArea || 'Current Area'})</span>
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Within <strong>{radiusParam} km</strong> radius • {displayItems.length} listing{displayItems.length === 1 ? '' : 's'} found
+                {t('browse:results.count', { count: displayItems.length, defaultValue: `${displayItems.length} items found` })}
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center bg-white dark:bg-slate-900 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
-              <span className="px-2 text-slate-400 text-[11px]">Radius:</span>
+              <span className="px-2 text-slate-400 text-[11px]">{t('campus:institutions.radius_label', { radius: '' })}:</span>
               {[1, 5, 10, 25, 50].map((rad) => (
                 <button
                   key={rad}
                   type="button"
                   onClick={() => updateFilter('radius', rad.toString())}
-                  className={`px-2.5 py-1 rounded-lg transition text-xs font-medium ${
+                  className={`px-2.5 py-1 rounded-lg transition text-xs font-medium cursor-pointer ${
                     radiusParam === rad
                       ? 'bg-blue-600 text-white font-bold shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  {rad} km
+                  {rad} {t('common:units.km')}
                 </button>
               ))}
             </div>
@@ -515,10 +526,10 @@ export const BrowsePage: React.FC = () => {
                 clearLocation();
                 updateFilter('nearMe', undefined);
               }}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-rose-600 transition"
-              title="Clear saved location"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-rose-600 transition cursor-pointer"
+              title={t('browse:filters.clear_location')}
             >
-              Clear Location
+              {t('browse:filters.clear_location')}
             </button>
           </div>
         </div>
@@ -526,17 +537,13 @@ export const BrowsePage: React.FC = () => {
 
       {/* Main Grid View */}
       {isLoading ? (
-        <LoadingSpinner size="lg" message="Loading listings..." />
+        <LoadingSpinner size="lg" message={t('common:actions.loading')} />
       ) : displayItems.length === 0 ? (
         <EmptyState
-          title="No items match your search"
-          description={
-            nearMeParam
-              ? `No items found within ${radiusParam} km of your location. Try selecting a wider radius or resetting filters.`
-              : 'Try broadening your search terms or clearing some filters.'
-          }
+          title={t('browse:empty.title')}
+          description={t('browse:empty.description')}
           action={{
-            label: 'Clear Filters',
+            label: t('browse:empty.reset_button'),
             onClick: clearAllFilters,
           }}
         />
@@ -578,28 +585,28 @@ export const BrowsePage: React.FC = () => {
                             : 'bg-teal-600 text-white'
                         }`}
                       >
-                        {item.type}
+                        {item.type === 'lost' ? t('common:status.lost') : t('common:status.found')}
                       </span>
                       <span className="px-2 py-0.5 text-[10px] font-semibold bg-black/60 backdrop-blur-md text-white rounded-md flex items-center">
                         <CategoryIcon icon={item.category?.icon} slug={item.category?.slug} className="w-3 h-3 mr-1 shrink-0" />
-                        <span className="truncate max-w-[120px]">{item.category?.name || 'Item'}</span>
+                        <span className="truncate max-w-[120px]">{getCategoryDisplayName(item.category, i18n.language) || 'Item'}</span>
                       </span>
                       {distance !== null && (
                         <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600/90 backdrop-blur-md text-white rounded-md shadow-sm flex items-center">
                           <Navigation className="w-2.5 h-2.5 mr-1" />
-                          {distance < 1 ? '< 1 km away' : `about ${Math.round(distance)} km away`}
+                          {formatLocalizedDistance(distance * 1000, t, i18n.language)}
                         </span>
                       )}
                     </div>
 
                     {item.status === 'returned' && (
                       <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-md shadow-sm">
-                        Returned
+                        {t('common:status.returned')}
                       </span>
                     )}
                     {item.status === 'pending_claim' && (
                       <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-amber-600 text-white text-[10px] font-bold uppercase rounded-md shadow-sm">
-                        Pending Claim
+                        {t('common:status.pending')}
                       </span>
                     )}
                   </div>
@@ -636,14 +643,14 @@ export const BrowsePage: React.FC = () => {
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-700">
           <p className="text-xs text-slate-500">
-            Showing Page <strong>{pageParam}</strong> of <strong>{totalPages}</strong> ({totalCount} items)
+            {pageParam} / {totalPages} ({formatLocalizedNumber(totalCount, i18n.language)})
           </p>
 
           <div className="flex items-center space-x-2">
             <button
               onClick={() => handlePageChange(pageParam - 1)}
               disabled={pageParam <= 1}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 transition"
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 transition cursor-pointer"
               aria-label="Previous page"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -654,7 +661,7 @@ export const BrowsePage: React.FC = () => {
             <button
               onClick={() => handlePageChange(pageParam + 1)}
               disabled={pageParam >= totalPages}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 transition"
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 transition cursor-pointer"
               aria-label="Next page"
             >
               <ChevronRight className="w-4 h-4" />

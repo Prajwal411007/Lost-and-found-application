@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Compass,
   MapPin,
@@ -155,6 +156,7 @@ function formatDistance(meters: number): string {
 }
 
 export const CampusPage: React.FC = () => {
+  const { t, i18n } = useTranslation(['campus', 'common']);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const campusSlug = searchParams.get('place') || 'stanford-university';
@@ -629,10 +631,10 @@ export const CampusPage: React.FC = () => {
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                Campus & Nearby Institutions
+                {t('campus:title')}
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                Explore nearby universities, colleges, and schools worldwide. View lost items and get walking directions.
+                {t('campus:subtitle')}
               </p>
             </div>
           </div>
@@ -817,7 +819,7 @@ export const CampusPage: React.FC = () => {
               }`}
             >
               <GraduationCap className="w-4 h-4" />
-              <span>Nearby Institutions</span>
+              <span>{t('campus:tabs.institutions')}</span>
             </button>
             <button
               type="button"
@@ -829,7 +831,7 @@ export const CampusPage: React.FC = () => {
               }`}
             >
               <Building2 className="w-4 h-4" />
-              <span>Campus Directory</span>
+              <span>{t('campus:tabs.directory')}</span>
             </button>
           </div>
 
@@ -843,24 +845,24 @@ export const CampusPage: React.FC = () => {
                 </label>
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Institution type filters">
                   {[
-                    { id: 'all', label: 'All', icon: GraduationCap },
-                    { id: 'university', label: 'Universities', icon: GraduationCap },
-                    { id: 'college', label: 'Colleges', icon: School },
-                    { id: 'school', label: 'Schools', icon: Building },
-                    { id: 'other', label: 'Other', icon: Layers },
-                  ].map((t) => (
+                    { id: 'all', label: t('campus:institutions.filter_all'), icon: GraduationCap },
+                    { id: 'university', label: t('campus:institutions.filter_university'), icon: GraduationCap },
+                    { id: 'college', label: t('campus:institutions.filter_college'), icon: School },
+                    { id: 'school', label: t('campus:institutions.filter_school'), icon: Building },
+                    { id: 'other', label: t('campus:institutions.filter_research'), icon: Layers },
+                  ].map((tc) => (
                     <button
-                      key={t.id}
+                      key={tc.id}
                       type="button"
-                      onClick={() => setSelectedType(t.id)}
+                      onClick={() => setSelectedType(tc.id)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer ${
-                        selectedType === t.id
+                        selectedType === tc.id
                           ? 'bg-teal-600 text-white shadow-xs'
                           : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
                       }`}
                     >
-                      <t.icon className="w-3 h-3" />
-                      <span>{t.label}</span>
+                      <tc.icon className="w-3 h-3" />
+                      <span>{tc.label}</span>
                     </button>
                   ))}
                 </div>

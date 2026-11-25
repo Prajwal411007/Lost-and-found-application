@@ -1,0 +1,50 @@
+{
+  "lost_title": "Report a Lost Item",
+  "found_title": "Report a Found Item",
+  "subtitle": "Provide accurate details to help our global matching system reconnect you with your item",
+  "steps": {
+    "step1": "1. Basic Details",
+    "step2": "2. Date & Location",
+    "step3": "3. Verification & Photos",
+    "step4": "4. Review"
+  },
+  "form": {
+    "title_label": "Item Title",
+    "title_placeholder": "e.g. Silver Dell XPS 15 Laptop",
+    "category_label": "Category",
+    "category_placeholder": "Select Category",
+    "description_label": "Detailed Description",
+    "description_placeholder": "Describe distinguishing marks, scratches, stickers, case color, etc.",
+    "date_lost_label": "Date Lost",
+    "date_found_label": "Date Found",
+    "location_label": "Location / Campus Area",
+    "location_placeholder": "Search address, building, or landmark...",
+    "use_current_location": "Use Current Location",
+    "secret_question_label": "Verification Question (Optional)",
+    "secret_question_placeholder": "e.g. What is the wallpaper picture on the lock screen?",
+    "secret_question_help": "Claimants must answer this question correctly to prove they own the item.",
+    "secret_answer_label": "Expected Answer",
+    "secret_answer_placeholder": "e.g. Golden retriever on grass",
+    "photos_label": "Upload Photos (Optional)",
+    "upload_hint": "Click or drag images here (PNG, JPG up to 5MB, max 4 photos)",
+    "submit_lost": "Submit Lost Report",
+    "submit_found": "Submit Found Report",
+    "submitting": "Submitting report...",
+    "privacy_notice": "Your personal contact information remains private. All communications take place safely inside the FindIt messaging platform."
+  },
+  "validation": {
+    "title_min": "Title must be at least 3 characters",
+    "description_min": "Please provide at least 10 characters of description",
+    "category_required": "Please select a category",
+    "date_required": "Please specify the date",
+    "country_required": "Country is required",
+    "city_required": "City or Town is required"
+  },
+  "success": {
+    "title": "Report Submitted Successfully!",
+    "lost_desc": "Your report is live. We'll automatically notify you if a matching item is turned in.",
+    "found_desc": "Thank you for reporting this found item! You are making your community a better place.",
+    "view_item": "View Item Report",
+    "browse_more": "Browse Other Items"
+  }
+}

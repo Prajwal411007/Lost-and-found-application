@@ -28,9 +28,10 @@ institutionsRouter.get('/', searchLimiter, async (req: Request, res: Response) =
 
   const { lat, lng, radius, types } = parsed.data;
   const typesFilter = types ? types.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : undefined;
+  const reqLang = (req.query.lang as string) || (req.headers['accept-language']?.startsWith('kn') ? 'kn' : req.headers['accept-language']?.startsWith('hi') ? 'hi' : 'en');
 
   try {
-    const institutions = await getNearbyInstitutions(lat, lng, radius, typesFilter);
+    const institutions = await getNearbyInstitutions(lat, lng, radius, typesFilter, reqLang);
     const unnamedCount = institutions.filter((i) => i.isUnnamed).length;
 
     res.json({
@@ -47,6 +48,8 @@ institutionsRouter.get('/', searchLimiter, async (req: Request, res: Response) =
   } catch (err: any) {
     res.status(502).json({
       error: 'OpenStreetMap institution query failed or timed out. Please try again.',
+      code: 'OVERPASS_FAILURE',
+      message: 'OpenStreetMap institution query failed or timed out. Please try again.',
       details: err.message,
     });
   }

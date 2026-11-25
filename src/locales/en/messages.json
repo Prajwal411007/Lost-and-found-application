@@ -1,0 +1,11 @@
+{
+  "title": "Messages & Inquiries",
+  "subtitle": "Communicate securely with item finders, owners, and campus recovery desks",
+  "empty_list": "No active conversations yet.",
+  "select_conversation": "Select a conversation from the left to read messages.",
+  "type_placeholder": "Type your message here...",
+  "send": "Send",
+  "safety_disclaimer": "Safety reminder: Never share bank account details, UPI PINs, passwords, or send advance money.",
+  "regarding": "Regarding item:",
+  "anonymous_user": "Community Member"
+}

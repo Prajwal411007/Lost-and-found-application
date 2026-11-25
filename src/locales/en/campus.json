@@ -1,0 +1,38 @@
+{
+  "title": "Campus Mode",
+  "subtitle": "Interactive map of university campuses, lost & found desks, and educational institutions",
+  "tabs": {
+    "campus_items": "Campus Items",
+    "institutions": "Nearby Institutions",
+    "directory": "Campus Directory"
+  },
+  "institutions": {
+    "title": "Nearby Educational Institutions",
+    "filter_all": "All",
+    "filter_university": "Universities",
+    "filter_college": "Colleges",
+    "filter_school": "Schools",
+    "filter_research": "Research",
+    "search_placeholder": "Search institutions by name...",
+    "count_one": "{{count}} institution found",
+    "count_other": "{{count}} institutions found",
+    "radius_label": "Within {{radius}}",
+    "walking_route": "Walking Directions",
+    "walk_time": "~{{mins}} mins walk ({{distance}})",
+    "unverified_badge": "OSM Campus",
+    "osm_source": "OpenStreetMap",
+    "nominatim_source": "Nominatim",
+    "empty_title": "No institutions found nearby",
+    "empty_desc": "No matching educational institutions were found within {{radius}} of your selected location.",
+    "why_no_results": "Why no institutions shown?",
+    "why_point1": "The search radius may be too narrow for this area.",
+    "why_point2": "OpenStreetMap tags might identify this campus as a building or landuse rather than an amenity.",
+    "why_point3": "Specific filters (like university only) may exclude polytechnics, institutes, or schools.",
+    "retry_button": "Retry Search",
+    "expand_radius_5km": "Expand Radius to 5 km",
+    "error_404": "Institution search service is currently unreachable.",
+    "error_rate_limited": "Too many requests to map servers. Please wait a few seconds.",
+    "error_timeout": "Search timed out. Please try again.",
+    "error_general": "Unable to load nearby institutions at this time."
+  }
+}

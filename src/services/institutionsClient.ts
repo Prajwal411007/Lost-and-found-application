@@ -61,8 +61,10 @@ function buildAddress(tags: Record<string, string>): string | undefined {
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-function extractInstitutionName(tags: Record<string, string>, type: string): { name: string; isUnnamed: boolean } {
+function extractInstitutionName(tags: Record<string, string>, type: string, lang: string = 'en'): { name: string; isUnnamed: boolean } {
+  const langKey = lang && lang !== 'en' ? `name:${lang}` : null;
   const resolved =
+    (langKey ? tags[langKey]?.trim() : null) ||
     tags.name?.trim() ||
     tags['name:en']?.trim() ||
     tags.official_name?.trim() ||
@@ -85,7 +87,8 @@ async function queryNominatimDirect(
   lat: number,
   lng: number,
   radiusMeters: number,
-  typesFilter?: string[]
+  typesFilter?: string[],
+  lang: string = 'en'
 ): Promise<NearbyInstitution[]> {
   const deltaLat = radiusMeters / 111320;
   const deltaLng = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
@@ -108,6 +111,7 @@ async function queryNominatimDirect(
         const res = await fetch(url, {
           headers: {
             'Accept': 'application/json',
+            'Accept-Language': lang,
           },
           signal: controller.signal,
         });
@@ -171,12 +175,13 @@ export async function queryOverpassDirectly(
   lat: number,
   lng: number,
   radiusMeters: number = 2000,
-  typesFilter?: string[]
+  typesFilter?: string[],
+  lang: string = 'en'
 ): Promise<NearbyInstitution[]> {
   const roundedLat = Math.round(lat * 1000) / 1000;
   const roundedLng = Math.round(lng * 1000) / 1000;
   const sortedTypes = typesFilter ? [...typesFilter].sort().join(',') : 'all';
-  const cacheKey = `${roundedLat}_${roundedLng}_${radiusMeters}_${sortedTypes}`;
+  const cacheKey = `${lang}_${roundedLat}_${roundedLng}_${radiusMeters}_${sortedTypes}`;
 
   // Check client cache with differentiated TTL
   const cached = clientCache.get(cacheKey);
@@ -270,7 +275,7 @@ export async function queryOverpassDirectly(
     const itemLng = el.lon ?? el.center?.lon;
     if (itemLat === undefined || itemLng === undefined) continue;
 
-    const { name, isUnnamed } = extractInstitutionName(tags, instType);
+    const { name, isUnnamed } = extractInstitutionName(tags, instType, lang);
 
     const dedupKey = `${name.toLowerCase()}_${Math.round(itemLat * 100) / 100}_${Math.round(itemLng * 100) / 100}`;
     if (seenKeys.has(dedupKey)) continue;
@@ -298,7 +303,7 @@ export async function queryOverpassDirectly(
   // If Overpass returned 0 results or failed, attempt Nominatim fallback
   if (parsed.length === 0) {
     try {
-      const nomResults = await queryNominatimDirect(lat, lng, radiusMeters, typesFilter);
+      const nomResults = await queryNominatimDirect(lat, lng, radiusMeters, typesFilter, lang);
       if (nomResults.length > 0) {
         clientCache.set(cacheKey, { data: nomResults, timestamp: Date.now() });
         return nomResults;

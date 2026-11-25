@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, Phone, Mail, Shield, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Phone, Mail, Shield, CheckCircle2, AlertCircle, Loader2, Globe } from 'lucide-react';
 
 const profileSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -15,6 +16,7 @@ const profileSchema = z.object({
 type ProfileFormData = z.infer<typeof profileSchema>;
 
 export const ProfilePage: React.FC = () => {
+  const { t, i18n } = useTranslation(['dashboard', 'common']);
   const { user, profile, updateProfile, refreshProfile } = useAuth();
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -135,6 +137,31 @@ export const ProfilePage: React.FC = () => {
             {errors.avatarUrl && (
               <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.avatarUrl.message}</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5 flex items-center">
+              <Globe className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
+              {t('dashboard:profile.preferred_language', 'Preferred Language')}
+            </label>
+            <select
+              value={i18n.language}
+              onChange={(e) => {
+                const newLang = e.target.value as any;
+                i18n.changeLanguage(newLang);
+                if (user?.id) {
+                  updateProfile({ preferred_language: newLang });
+                }
+              }}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="en">English (English)</option>
+              <option value="kn">ಕನ್ನಡ (Kannada)</option>
+              <option value="hi">हिन्दी (Hindi)</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {t('dashboard:profile.language_help', 'Choose the language used for the interface and notifications.')}
+            </p>
           </div>
 
           <div>

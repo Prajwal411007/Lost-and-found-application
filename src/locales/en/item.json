@@ -1,0 +1,45 @@
+{
+  "details_title": "Item Details",
+  "status": {
+    "lost": "Lost Item",
+    "found": "Found Item",
+    "returned": "Successfully Returned",
+    "pending_claim": "Claim Under Review"
+  },
+  "sections": {
+    "description": "Item Description",
+    "attributes": "Attributes & Identifiers",
+    "location": "Reported Location",
+    "date": "Reported Date",
+    "category": "Category",
+    "reported_by": "Reported by",
+    "anonymous_user": "Community Member"
+  },
+  "actions": {
+    "claim_item": "Claim This Item",
+    "contact_finder": "Message Finder",
+    "contact_owner": "Message Owner",
+    "share": "Share",
+    "share_copied": "Link copied to clipboard!",
+    "print_tag": "Print QR Tag",
+    "mark_returned": "Mark as Returned"
+  },
+  "claim_modal": {
+    "title": "Claim This Item",
+    "subtitle": "Provide ownership verification details. The finder will review your answers safely.",
+    "verification_prompt": "Ownership Verification Question:",
+    "answer_label": "Your Answer",
+    "answer_placeholder": "Enter your answer to verify ownership...",
+    "message_label": "Message to Finder",
+    "message_placeholder": "Provide additional details, contact preference, or convenient meetup time...",
+    "submit_button": "Submit Ownership Claim",
+    "submitting": "Submitting claim...",
+    "cancel": "Cancel",
+    "success_title": "Claim Submitted!",
+    "success_message": "Your claim has been sent to the finder for review. Check your Messages for updates."
+  },
+  "similar_items": {
+    "title": "Potential Matches",
+    "subtitle": "Similar items reported nearby around the same time"
+  }
+}

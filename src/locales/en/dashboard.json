@@ -1,0 +1,31 @@
+{
+  "title": "User Dashboard",
+  "subtitle": "Manage your reported items, incoming and outgoing claims, and profile preferences",
+  "tabs": {
+    "my_reports": "My Reported Items",
+    "my_claims": "My Claims",
+    "registered_items": "Registered Items (QR)",
+    "profile": "Profile & Settings"
+  },
+  "stats": {
+    "reported_items": "Reported Items",
+    "active_claims": "Active Claims",
+    "items_returned": "Items Returned"
+  },
+  "profile": {
+    "title": "Profile Details",
+    "full_name": "Full Name",
+    "email": "Email Address",
+    "phone": "Phone Number",
+    "preferred_language": "Preferred Language",
+    "language_help": "Choose the language used for the interface and email updates.",
+    "save_button": "Save Changes",
+    "saving": "Saving...",
+    "updated_toast": "Profile settings updated successfully"
+  },
+  "empty": {
+    "no_reports": "You haven't reported any lost or found items yet.",
+    "no_claims": "You have no active claims.",
+    "report_button": "Report an Item Now"
+  }
+}

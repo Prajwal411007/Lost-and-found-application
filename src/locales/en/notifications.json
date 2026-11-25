@@ -1,0 +1,14 @@
+{
+  "title": "Notifications",
+  "subtitle": "Updates on your reported items, matches, and claims",
+  "mark_all_read": "Mark All as Read",
+  "empty": "No notifications yet.",
+  "types": {
+    "match_found": "A potential match was discovered for your reported item!",
+    "new_message": "You received a new message regarding an item.",
+    "claim_received": "A user has submitted an ownership claim for your item.",
+    "claim_decision": "The finder has updated the status of your claim.",
+    "item_returned": "An item has been marked as safely returned.",
+    "system": "System announcement"
+  }
+}

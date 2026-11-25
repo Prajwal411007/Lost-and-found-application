@@ -1,7 +1,9 @@
 import React from 'react';
 import { AlertCircle, RotateCcw, Loader2, Tag } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useCategories } from '@/hooks/useCategories';
 import { CategoryIcon } from '@/lib/categoryIcons';
+import { getCategoryDisplayName } from '@/lib/i18nHelpers';
 
 export interface CategorySelectProps
   extends React.SelectHTMLAttributes<HTMLSelectElement> {
@@ -26,6 +28,7 @@ export const CategorySelect = React.forwardRef<HTMLSelectElement, CategorySelect
     },
     ref
   ) => {
+    const { t, i18n } = useTranslation(['report', 'common']);
     const { categories, isLoading, isError, error, refetch, isFetching, isEmpty } = useCategories();
 
     const selectedCategory = categories.find((c) => c.id === value || c.slug === value);
@@ -89,7 +92,7 @@ export const CategorySelect = React.forwardRef<HTMLSelectElement, CategorySelect
           >
             {isLoading ? (
               <option value="" disabled>
-                Loading categories...
+                {t('common:actions.loading', 'Loading categories...')}
               </option>
             ) : isError ? (
               <option value="" disabled>
@@ -100,12 +103,12 @@ export const CategorySelect = React.forwardRef<HTMLSelectElement, CategorySelect
                 Categories unavailable
               </option>
             ) : (
-              <option value="">Select Category</option>
+              <option value="">{t('report:form.category_placeholder', 'Select Category')}</option>
             )}
 
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {getCategoryDisplayName(c, i18n.language)}
               </option>
             ))}
           </select>

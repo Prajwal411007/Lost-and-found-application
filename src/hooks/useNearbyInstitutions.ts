@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { queryOverpassDirectly } from '@/services/institutionsClient';
 
 export interface NearbyInstitution {
@@ -147,10 +148,12 @@ export function useNearbyInstitutions({
 
   // In development, empty string uses relative /api which Vite proxies to port 3001.
   // In production (e.g. Vercel), VITE_API_URL points to the deployed Express backend.
+  const { i18n } = useTranslation();
+  const currentLang = i18n?.language || 'en';
   const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
   return useQuery<NearbyInstitutionsResponse, InstitutionApiError | Error>({
-    queryKey: ['nearby-institutions', roundedLat, roundedLng, radius, typesParam, apiBaseUrl],
+    queryKey: ['nearby-institutions', roundedLat, roundedLng, radius, typesParam, apiBaseUrl, currentLang],
     queryFn: async () => {
       if (roundedLat == null || roundedLng == null) {
         return {
@@ -166,6 +169,7 @@ export function useNearbyInstitutions({
         lat: String(roundedLat),
         lng: String(roundedLng),
         radius: String(radius),
+        lang: currentLang,
       });
 
       if (typesParam) {
@@ -176,7 +180,11 @@ export function useNearbyInstitutions({
 
       let res: Response;
       try {
-        res = await fetch(targetUrl);
+        res = await fetch(targetUrl, {
+          headers: {
+            'Accept-Language': currentLang,
+          },
+        });
       } catch (networkErr: any) {
         if (networkErr.name === 'AbortError') {
           throw new InstitutionApiError(
@@ -187,7 +195,7 @@ export function useNearbyInstitutions({
 
         // On network failure to backend, try direct client Overpass fallback
         try {
-          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types);
+          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types, currentLang);
           return {
             institutions: directData,
             count: directData.length,
@@ -213,7 +221,7 @@ export function useNearbyInstitutions({
         // Received HTML (e.g. Vercel SPA rewrite to index.html or 404 page).
         // Fall back gracefully to direct OpenStreetMap query:
         try {
-          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types);
+          const directData = await queryOverpassDirectly(roundedLat, roundedLng, radius, types, currentLang);
           if (directData && directData.length > 0) {
             return {
               institutions: directData,

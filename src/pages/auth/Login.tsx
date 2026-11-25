@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Search,
@@ -21,21 +22,25 @@ import {
 } from 'lucide-react';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
 
-const loginSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address'),
-  password: z
-    .string()
-    .min(1, 'Password is required')
-    .min(8, 'Password must be at least 8 characters'),
-  rememberMe: z.boolean().optional(),
-});
+const createLoginSchema = (t: any) =>
+  z.object({
+    email: z
+      .string()
+      .min(1, t('auth:validation.email_required', 'Email is required'))
+      .email(t('auth:validation.invalid_email', 'Please enter a valid email address')),
+    password: z
+      .string()
+      .min(1, t('auth:validation.password_required', 'Password is required'))
+      .min(8, t('auth:validation.password_min_length', 'Password must be at least 8 characters')),
+    rememberMe: z.boolean().optional(),
+  });
 
-type LoginFormData = z.infer<typeof loginSchema>;
+type LoginFormData = z.infer<ReturnType<typeof createLoginSchema>>;
 
 export const Login: React.FC = () => {
+  const { t } = useTranslation(['auth', 'common', 'home']);
+  const loginSchema = useMemo(() => createLoginSchema(t), [t]);
+
   const { signIn, resendVerificationEmail, isConfigured, isAuthenticated, isLoading: authLoading } = useAuth();
   const [authError, setAuthError] = useState<{ message: string; type?: 'unverified' | 'generic' } | null>(null);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string>('');
@@ -70,7 +75,7 @@ export const Login: React.FC = () => {
     register,
     handleSubmit,
     watch,
-    formState: { errors, touchedFields },
+    formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     mode: 'onBlur',
@@ -90,7 +95,6 @@ export const Login: React.FC = () => {
   const mapErrorMessage = (errMessage: string, email: string): { message: string; type?: 'unverified' | 'generic' } => {
     const lower = errMessage.toLowerCase();
 
-    // Email not confirmed
     if (lower.includes('email not confirmed') || lower.includes('unverified') || lower.includes('email_not_confirmed')) {
       setUnverifiedEmail(email);
       return {
@@ -99,21 +103,12 @@ export const Login: React.FC = () => {
       };
     }
 
-    // Rate limiting / too many requests
-    if (lower.includes('rate limit') || lower.includes('too many') || lower.includes('over_email_send_rate_limit')) {
+    if (lower.includes('invalid login credentials') || lower.includes('invalid credentials')) {
       return {
-        message: 'Too many attempts. Please wait a minute and try again.',
+        message: 'Incorrect email or password.',
       };
     }
 
-    // Network / server connection error
-    if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('connection') || lower.includes('can\'t reach')) {
-      return {
-        message: "Can't reach the server. Check your connection and try again.",
-      };
-    }
-
-    // Wrong credentials - never reveal which is wrong and never reveal if email is registered
     return {
       message: 'Incorrect email or password.',
     };
@@ -122,31 +117,35 @@ export const Login: React.FC = () => {
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
     setAuthError(null);
-    setResendSuccess(false);
+    setSuccessBanner(null);
 
     try {
-      const { error } = await signIn(data.email.trim(), data.password);
+      const { error } = await signIn(data.email, data.password);
       if (error) {
-        setAuthError(mapErrorMessage(error.message, data.email.trim()));
+        setAuthError(mapErrorMessage(error.message, data.email));
       } else {
         navigate(from, { replace: true });
       }
     } catch (err: any) {
-      setAuthError(mapErrorMessage(err?.message || '', data.email.trim()));
+      setAuthError({ message: err.message || 'An unexpected error occurred during login.' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleResendVerification = async () => {
-    if (resendCooldown > 0 || !unverifiedEmail) return;
+    const targetEmail = unverifiedEmail || enteredEmail;
+    if (!targetEmail) return;
+
+    setResendCooldown(60);
+    setResendSuccess(false);
+
     try {
-      const { error } = await resendVerificationEmail(unverifiedEmail);
-      if (!error) {
-        setResendSuccess(true);
-        setResendCooldown(60);
+      const { error } = await resendVerificationEmail(targetEmail);
+      if (error) {
+        console.error('Resend verification failed:', error);
       } else {
-        alert(error.message);
+        setResendSuccess(true);
       }
     } catch (err) {
       console.error('Failed to resend verification email:', err);
@@ -168,13 +167,13 @@ export const Login: React.FC = () => {
 
             <div>
               <span className="inline-block px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white/20 text-blue-100 mb-3">
-                Global Recovery Network
+                {t('home:hero.badge')}
               </span>
               <h1 className="text-3xl font-black tracking-tight text-white leading-tight">
-                Welcome back to your community.
+                {t('auth:login.title')}
               </h1>
               <p className="mt-2 text-sm text-blue-100/90 leading-relaxed">
-                Log in to monitor your listings, receive automated match suggestions, and safely coordinate returns.
+                {t('auth:login.subtitle')}
               </p>
             </div>
 
@@ -185,9 +184,9 @@ export const Login: React.FC = () => {
                   <MapPin className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-bold text-white">Report Lost & Found Items</h2>
+                  <h2 className="text-xs font-bold text-white">{t('home:features.step1_title')}</h2>
                   <p className="text-[11px] text-blue-100/80">
-                    Pin approximate locations and upload photos to initiate community recovery.
+                    {t('home:features.step1_desc')}
                   </p>
                 </div>
               </div>
@@ -197,9 +196,9 @@ export const Login: React.FC = () => {
                   <Zap className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-bold text-white">Automated Match Alerts</h2>
+                  <h2 className="text-xs font-bold text-white">{t('home:features.step2_title')}</h2>
                   <p className="text-[11px] text-blue-100/80">
-                    Our transparent weighted scoring engine notifies you of potential matches instantly.
+                    {t('home:features.step2_desc')}
                   </p>
                 </div>
               </div>
@@ -209,9 +208,9 @@ export const Login: React.FC = () => {
                   <ShieldCheck className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-bold text-white">Safe & Private Returns</h2>
+                  <h2 className="text-xs font-bold text-white">{t('home:features.step3_title')}</h2>
                   <p className="text-[11px] text-blue-100/80">
-                    Private verification questions and safe public exchange checklists protect your privacy.
+                    {t('home:features.step3_desc')}
                   </p>
                 </div>
               </div>
@@ -219,7 +218,7 @@ export const Login: React.FC = () => {
           </div>
 
           <div className="relative z-10 pt-6 text-xs text-blue-100/70 border-t border-white/10">
-            Protected with Supabase Auth & Row-Level Security.
+            FindIt • {t('common:app_title')}
           </div>
 
           {/* Background Ambient Shapes */}
@@ -239,20 +238,20 @@ export const Login: React.FC = () => {
                 FindIt
               </span>
             </Link>
-            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Welcome back</h1>
-            <p className="text-xs text-slate-500 mt-1">Sign in to your account</p>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{t('auth:login.title')}</h1>
+            <p className="text-xs text-slate-500 mt-1">{t('auth:login.subtitle')}</p>
           </div>
 
           <div className="hidden lg:block mb-6">
             <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              Sign In to Your Account
+              {t('auth:login.title')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Enter your registered credentials below.
+              {t('auth:login.subtitle')}
             </p>
           </div>
 
-          {/* Success Banner (e.g. from password reset) */}
+          {/* Success Banner */}
           {successBanner && (
             <div
               role="status"
@@ -308,7 +307,7 @@ export const Login: React.FC = () => {
                 htmlFor="email"
                 className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5"
               >
-                Email Address
+                {t('auth:login.email_label')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -327,7 +326,7 @@ export const Login: React.FC = () => {
                       ? 'border-rose-300 dark:border-rose-800 focus:ring-rose-500'
                       : 'border-slate-200 dark:border-slate-700 focus:ring-blue-500 focus:border-blue-500'
                   }`}
-                  placeholder="you@example.com"
+                  placeholder={t('auth:login.email_placeholder')}
                 />
               </div>
               {errors.email && (
@@ -344,13 +343,13 @@ export const Login: React.FC = () => {
                   htmlFor="password"
                   className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300"
                 >
-                  Password
+                  {t('auth:login.password_label')}
                 </label>
                 <Link
                   to="/forgot-password"
                   className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
                 >
-                  Forgot password?
+                  {t('auth:login.forgot_password')}
                 </Link>
               </div>
               <div className="relative">
@@ -370,13 +369,13 @@ export const Login: React.FC = () => {
                       ? 'border-rose-300 dark:border-rose-800 focus:ring-rose-500'
                       : 'border-slate-200 dark:border-slate-700 focus:ring-blue-500 focus:border-blue-500'
                   }`}
-                  placeholder="••••••••"
+                  placeholder={t('auth:login.password_placeholder')}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -388,20 +387,6 @@ export const Login: React.FC = () => {
               )}
             </div>
 
-            {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between pt-1">
-              <label htmlFor="remember-me" className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                <input
-                  id="remember-me"
-                  type="checkbox"
-                  disabled={isSubmitting}
-                  {...register('rememberMe')}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-600 cursor-pointer"
-                />
-                <span>Remember me</span>
-              </label>
-            </div>
-
             {/* Submit Button */}
             <button
               type="submit"
@@ -411,11 +396,11 @@ export const Login: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Logging in...
+                  {t('auth:login.signing_in')}
                 </>
               ) : (
                 <>
-                  Log in
+                  {t('auth:login.submit_button')}
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </>
               )}
@@ -425,9 +410,9 @@ export const Login: React.FC = () => {
           {/* Footer Link */}
           <div className="text-center pt-6 mt-6 border-t border-slate-100 dark:border-slate-700/60">
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-              New here?{' '}
+              {t('auth:login.no_account')}{' '}
               <Link to="/signup" className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
-                Create an account
+                {t('auth:login.sign_up_link')}
               </Link>
             </p>
           </div>

@@ -10,31 +10,24 @@ import {
   Compass,
   ArrowRight,
   Sparkles,
-  Smartphone,
-  Wallet,
-  Key,
-  Briefcase,
-  Watch,
-  CreditCard,
-  Shirt,
-  Dog,
-  BookOpen,
-  Trophy,
   Package,
   Navigation,
   RotateCcw,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useCategories, useCategoryItemCounts } from '@/hooks/useCategories';
 import { CategoryIcon } from '@/lib/categoryIcons';
 import { Item, Category } from '@/types';
-import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/utils';
+import { getCategoryDisplayName, formatLocalizedDate, formatLocalizedNumber } from '@/lib/i18nHelpers';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation(['home', 'common']);
   const { coords, requestLocation, openPrompt } = useGeolocation();
   const {
     categories,
@@ -98,7 +91,7 @@ export const Home: React.FC = () => {
           returnRate: rate,
         });
       } catch (err) {
-        console.error('Error loading home data:', err);
+        console.error('Failed to load home stats:', err);
       } finally {
         setIsLoading(false);
       }
@@ -136,18 +129,15 @@ export const Home: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-xs font-semibold uppercase tracking-wider mb-6 border border-blue-200 dark:border-blue-800/60">
             <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Global & Campus Lost and Found Network</span>
+            <span>{t('home:hero.badge')}</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-black text-slate-900 dark:text-white tracking-tight max-w-4xl mx-auto leading-tight">
-            Lost Something? <br className="hidden sm:inline" />
-            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-teal-500 bg-clip-text text-transparent">
-              Let's Find It.
-            </span>
+            {t('home:hero.title_main')}
           </h1>
 
           <p className="mt-5 text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed">
-            The trusted global network reconnecting people with their lost belongings across cities, public transits, and university campuses worldwide.
+            {t('home:hero.subtitle')}
           </p>
 
           {/* Quick Action Buttons */}
@@ -156,13 +146,13 @@ export const Home: React.FC = () => {
               to="/report/lost"
               className="w-full sm:w-auto px-8 py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 shadow-lg shadow-rose-500/25 transition transform hover:-translate-y-0.5"
             >
-              Report Lost Item
+              {t('home:hero.cta_lost')}
             </Link>
             <Link
               to="/report/found"
               className="w-full sm:w-auto px-8 py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-lg shadow-teal-500/25 transition transform hover:-translate-y-0.5"
             >
-              Report Found Item
+              {t('home:hero.cta_found')}
             </Link>
           </div>
 
@@ -175,7 +165,7 @@ export const Home: React.FC = () => {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="What did you lose or find? (e.g. iPhone, Keys)"
+                  placeholder={t('home:hero.search_placeholder')}
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl text-sm border-0 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -187,10 +177,10 @@ export const Home: React.FC = () => {
                   aria-label="Filter by category"
                   className="w-full py-2.5 px-3 rounded-xl text-sm border-0 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">All Categories</option>
+                  <option value="">{t('browse:filters.category_all', 'All Categories')}</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.slug}>
-                      {c.name}
+                      {getCategoryDisplayName(c, i18n.language)}
                     </option>
                   ))}
                 </select>
@@ -202,7 +192,7 @@ export const Home: React.FC = () => {
                   type="text"
                   value={locationQuery}
                   onChange={(e) => setLocationQuery(e.target.value)}
-                  placeholder="City or Campus"
+                  placeholder={t('common:nav.campus', 'City or Campus')}
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl text-sm border-0 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -210,8 +200,8 @@ export const Home: React.FC = () => {
               <div className="sm:col-span-1">
                 <button
                   type="submit"
-                  aria-label="Search listings"
-                  className="w-full h-full min-h-[42px] bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center transition shadow-sm"
+                  aria-label={t('common:actions.search', 'Search')}
+                  className="w-full h-full min-h-[42px] bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center transition shadow-sm cursor-pointer"
                 >
                   <Search className="w-4 h-4" />
                 </button>
@@ -221,28 +211,28 @@ export const Home: React.FC = () => {
 
           {/* Quick Search Chips including Near Me */}
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
-            <span>Quick search:</span>
+            <span>{t('browse:filters.search_placeholder', 'Quick search')}:</span>
             <button
               type="button"
               onClick={handleNearMeSearch}
-              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900 transition shadow-2xs"
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900 transition shadow-2xs cursor-pointer"
             >
               <Navigation className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-              <span>Items Near Me</span>
+              <span>{t('browse:filters.use_location', 'Items Near Me')}</span>
             </button>
             <button
               type="button"
               onClick={() => navigate('/browse?type=lost')}
-              className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition"
+              className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition cursor-pointer"
             >
-              Recent Lost
+              {t('browse:filters.type_lost', 'Lost Items')}
             </button>
             <button
               type="button"
               onClick={() => navigate('/browse?type=found')}
-              className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition"
+              className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition cursor-pointer"
             >
-              Recent Found
+              {t('browse:filters.type_found', 'Found Items')}
             </button>
           </div>
         </div>
@@ -252,10 +242,10 @@ export const Home: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {[
-            { label: 'Total Items Reported', value: stats.totalReported, suffix: '+', icon: Package, color: 'text-blue-600' },
-            { label: 'Belongings Reunited', value: stats.itemsReturned, suffix: '', icon: ShieldCheck, color: 'text-emerald-600' },
-            { label: 'Active Match Suggestions', value: stats.activeMatches, suffix: '', icon: Zap, color: 'text-amber-500' },
-            { label: 'Community Return Rate', value: `${stats.returnRate}%`, suffix: '', icon: Sparkles, color: 'text-purple-600' },
+            { label: t('dashboard:stats.reported_items', 'Total Items Reported'), value: formatLocalizedNumber(stats.totalReported, i18n.language), suffix: '+', icon: Package, color: 'text-blue-600' },
+            { label: t('dashboard:stats.items_returned', 'Belongings Reunited'), value: formatLocalizedNumber(stats.itemsReturned, i18n.language), suffix: '', icon: ShieldCheck, color: 'text-emerald-600' },
+            { label: t('home:stats.match_rate_label', 'Direct Match Rate'), value: `${formatLocalizedNumber(stats.returnRate, i18n.language)}%`, suffix: '', icon: Zap, color: 'text-amber-500' },
+            { label: t('home:stats.campuses_label', 'Campuses Connected'), value: formatLocalizedNumber(450, i18n.language), suffix: '+', icon: Sparkles, color: 'text-purple-600' },
           ].map((s, idx) => (
             <div
               key={idx}
@@ -282,20 +272,20 @@ export const Home: React.FC = () => {
           <div className="relative z-10 max-w-2xl space-y-4">
             <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold tracking-wide uppercase">
               <Compass className="w-3.5 h-3.5" />
-              <span>Campus Navigation Mode</span>
+              <span>{t('home:campus_banner.badge')}</span>
             </span>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Looking for an item on your university campus?
+              {t('home:campus_banner.title')}
             </h2>
             <p className="text-teal-100 text-sm leading-relaxed">
-              Explore buildings, dining halls, and student centers with interactive map markers, search by hall or building code, and get walking directions straight to where the item was found.
+              {t('home:campus_banner.description')}
             </p>
             <div className="pt-2">
               <Link
                 to="/campus"
                 className="inline-flex items-center px-5 py-2.5 bg-white text-teal-800 font-semibold text-sm rounded-xl hover:bg-teal-50 transition shadow-sm"
               >
-                Launch Campus Navigator
+                {t('home:campus_banner.button')}
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Link>
             </div>
@@ -311,17 +301,17 @@ export const Home: React.FC = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Popular Categories
+              {t('browse:filters.category_all', 'Categories')}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Browse lost and found belongings by specific category
+              {t('home:subtitle', 'Browse lost and found belongings by specific category')}
             </p>
           </div>
           <Link
             to="/browse"
             className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center"
           >
-            View all listings
+            {t('home:recent.view_all', 'View all listings')}
             <ArrowRight className="w-4 h-4 ml-1" />
           </Link>
         </div>
@@ -334,10 +324,10 @@ export const Home: React.FC = () => {
             <button
               type="button"
               onClick={() => refetchCats()}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition shadow-sm"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition shadow-sm cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Retry Loading Categories</span>
+              <span>{t('common:actions.retry', 'Retry')}</span>
             </button>
           </div>
         ) : isLoadingCats ? (
@@ -371,10 +361,10 @@ export const Home: React.FC = () => {
                     <CategoryIcon icon={cat.icon} slug={cat.slug} className="w-6 h-6" />
                   </div>
                   <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 line-clamp-1">
-                    {cat.name}
+                    {getCategoryDisplayName(cat, i18n.language)}
                   </span>
                   <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                    {count} {count === 1 ? 'item' : 'items'}
+                    {t('browse:results.count', { count, defaultValue: `${count} items` })}
                   </span>
                 </Link>
               );
@@ -388,29 +378,29 @@ export const Home: React.FC = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Recent Activity
+              {t('home:recent.title')}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Latest items reported missing or discovered by the community
+              {t('home:recent.subtitle')}
             </p>
           </div>
           <Link
             to="/browse"
             className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center"
           >
-            Explore all
+            {t('home:recent.view_all')}
             <ArrowRight className="w-4 h-4 ml-1" />
           </Link>
         </div>
 
         {isLoading ? (
-          <LoadingSpinner message="Loading recent listings..." />
+          <LoadingSpinner message={t('common:actions.loading')} />
         ) : recentItems.length === 0 ? (
           <EmptyState
-            title="No recent listings"
-            description="Be the first to report a lost or found item in your area!"
+            title={t('home:recent.no_items')}
+            description={t('browse:empty.description')}
             action={{
-              label: 'Report an Item',
+              label: t('home:hero.cta_lost'),
               onClick: () => navigate('/report/lost'),
             }}
           />
@@ -442,15 +432,15 @@ export const Home: React.FC = () => {
                           : 'bg-teal-600 text-white'
                       }`}
                     >
-                      {item.type}
+                      {item.type === 'lost' ? t('common:status.lost') : t('common:status.found')}
                     </span>
                     <span className="px-2 py-1 text-xs font-semibold bg-black/60 backdrop-blur-md text-white rounded-lg">
-                      {item.category?.name || 'Item'}
+                      {getCategoryDisplayName(item.category, i18n.language) || 'Item'}
                     </span>
                   </div>
                   {item.status === 'returned' && (
                     <div className="absolute top-3 right-3 px-2 py-1 bg-emerald-600 text-white text-[11px] font-bold uppercase rounded-lg shadow-sm">
-                      Reunited
+                      {t('common:status.returned')}
                     </div>
                   )}
                 </div>
@@ -472,7 +462,7 @@ export const Home: React.FC = () => {
                     </span>
                     <span className="flex items-center">
                       <Clock className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                      {formatRelativeTime(item.created_at)}
+                      {formatLocalizedDate(item.created_at, i18n.language)}
                     </span>
                   </div>
                 </div>
@@ -486,10 +476,10 @@ export const Home: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         <div className="text-center max-w-2xl mx-auto mb-12">
           <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            How FindIt Works
+            {t('home:features.title')}
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            A transparent 3-step process designed to protect your privacy and guarantee safe recovery
+            {t('home:features.subtitle')}
           </p>
         </div>
 
@@ -497,22 +487,22 @@ export const Home: React.FC = () => {
           {[
             {
               step: '01',
-              title: 'Report Your Item',
-              desc: 'Submit a detailed report with photos, distinguishing marks, and an approximate location pin. Sensitive IDs are shielded from public view.',
+              title: t('home:features.step1_title'),
+              desc: t('home:features.step1_desc'),
               color: 'text-rose-600 dark:text-rose-400',
               bg: 'bg-rose-50 dark:bg-rose-950/40',
             },
             {
               step: '02',
-              title: 'Automated Matching',
-              desc: 'Our transparent rule-based matching engine scores matches by category, text description, geo-distance, and date, alerting both parties.',
+              title: t('home:features.step2_title'),
+              desc: t('home:features.step2_desc'),
               color: 'text-blue-600 dark:text-blue-400',
               bg: 'bg-blue-50 dark:bg-blue-950/40',
             },
             {
               step: '03',
-              title: 'Verify & Safely Reunited',
-              desc: 'The claimant answers private verification questions. Once verified, coordinate a safe return in a well-lit public space using our return checklist.',
+              title: t('home:features.step3_title'),
+              desc: t('home:features.step3_desc'),
               color: 'text-teal-600 dark:text-teal-400',
               bg: 'bg-teal-50 dark:bg-teal-950/40',
             },
@@ -535,4 +525,3 @@ export const Home: React.FC = () => {
     </div>
   );
 };
-

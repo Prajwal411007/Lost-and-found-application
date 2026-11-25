@@ -1,0 +1,43 @@
+{
+  "title": "Browse Lost & Found Items",
+  "subtitle": "Discover reported items across your city, neighborhood, and campus networks",
+  "filters": {
+    "search_placeholder": "Search by keywords, brand, color, or location...",
+    "type_all": "All Items",
+    "type_lost": "Lost Only",
+    "type_found": "Found Only",
+    "category_all": "All Categories",
+    "date_all": "Any Time",
+    "date_today": "Today",
+    "date_week": "Past Week",
+    "date_month": "Past Month",
+    "radius_all": "Any Distance",
+    "radius_1km": "Within 1 km",
+    "radius_5km": "Within 5 km",
+    "radius_10km": "Within 10 km",
+    "radius_25km": "Within 25 km",
+    "sort_newest": "Newest First",
+    "sort_oldest": "Oldest First",
+    "sort_closest": "Closest to Me",
+    "use_location": "Use My Location",
+    "location_active": "Location Filter Active",
+    "clear_location": "Clear Location"
+  },
+  "results": {
+    "count_one": "{{count}} item found",
+    "count_other": "{{count}} items found",
+    "near_location": "near your current location"
+  },
+  "empty": {
+    "title": "No items match your criteria",
+    "description": "Try broadening your search query, increasing the radius, or clearing category filters.",
+    "reset_button": "Reset All Filters"
+  },
+  "card": {
+    "lost_date": "Lost on {{date}}",
+    "found_date": "Found on {{date}}",
+    "distance": "{{distance}} away",
+    "view_button": "View Details",
+    "has_secret": "Protected Verification"
+  }
+}

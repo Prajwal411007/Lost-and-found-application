@@ -1,0 +1,46 @@
+{
+  "hero": {
+    "badge": "Privacy-Preserving Lost & Found",
+    "title_main": "Lost Something? Found Something?",
+    "subtitle": "A community-driven recovery network connecting people, campuses, and transit stations to return lost belongings safely and privately.",
+    "cta_lost": "Report Lost Item",
+    "cta_found": "Report Found Item",
+    "cta_browse": "Browse All Items",
+    "search_placeholder": "Search by item name, brand, color, or location..."
+  },
+  "stats": {
+    "recovered_count": "12,400+",
+    "recovered_label": "Items Recovered",
+    "match_rate": "89%",
+    "match_rate_label": "Direct Match Rate",
+    "campuses_count": "450+",
+    "campuses_label": "Campuses Connected",
+    "return_time": "< 24 hrs",
+    "return_time_label": "Average Return Time"
+  },
+  "features": {
+    "badge": "How It Works",
+    "title": "Smart, Safe, and Automated Recovery",
+    "subtitle": "Combining geolocation, privacy controls, and automated matching algorithms.",
+    "step1_title": "1. Report Details Safely",
+    "step1_desc": "List your lost or found item with date, approximate location, and distinguishing attributes. Your personal contact information is never published.",
+    "step2_title": "2. Intelligent Matching",
+    "step2_desc": "Our system cross-references category, location radius, timing, and item attributes to notify owners of high-confidence potential matches.",
+    "step3_title": "3. Verified Handover",
+    "step3_desc": "Owners answer private verification questions or use QR tags to confirm ownership before coordinating a safe handover at public partner desks."
+  },
+  "recent": {
+    "title": "Recently Reported Items",
+    "subtitle": "Check the latest items reported across your region",
+    "view_all": "View All Items",
+    "no_items": "No items reported yet. Be the first to report!",
+    "lost_tag": "Lost",
+    "found_tag": "Found"
+  },
+  "campus_banner": {
+    "badge": "University & College Mode",
+    "title": "Navigate Your Campus Lost & Found",
+    "description": "Switch to Campus Mode to view lost items around your college buildings, student centers, libraries, and security desks.",
+    "button": "Explore Campus Mode"
+  }
+}

@@ -20,6 +20,7 @@ import {
   Navigation,
   Search,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/contexts/LocationContext';
@@ -29,30 +30,33 @@ import { reverseGeocode, searchPlaces } from '@/services/geocoding';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
 import { CategorySelect } from '@/components/common/CategorySelect';
 
-const reportSchema = z.object({
-  type: z.enum(['lost', 'found']),
-  title: z.string().min(3, 'Title must be at least 3 characters').max(100, 'Title too long'),
-  description: z.string().min(10, 'Please provide at least 10 characters of description'),
-  categoryId: z.string().min(1, 'Please select a category'),
-  dateOccurred: z.string().min(1, 'Please specify the date'),
-  locationCountry: z.string().min(1, 'Country is required'),
-  locationState: z.string().optional(),
-  locationCity: z.string().min(1, 'City or Town is required'),
-  locationLandmark: z.string().optional(),
-  color: z.string().optional(),
-  brand: z.string().optional(),
-  model: z.string().optional(),
-  distinguishingMarks: z.string().optional(),
-  secretQuestion: z.string().optional(),
-});
+const createReportSchema = (t: any) =>
+  z.object({
+    type: z.enum(['lost', 'found']),
+    title: z.string().min(3, t('report:validation.title_min', 'Title must be at least 3 characters')).max(100),
+    description: z.string().min(10, t('report:validation.description_min', 'Please provide at least 10 characters of description')),
+    categoryId: z.string().min(1, t('report:validation.category_required', 'Please select a category')),
+    dateOccurred: z.string().min(1, t('report:validation.date_required', 'Please specify the date')),
+    locationCountry: z.string().min(1, t('report:validation.country_required', 'Country is required')),
+    locationState: z.string().optional(),
+    locationCity: z.string().min(1, t('report:validation.city_required', 'City or Town is required')),
+    locationLandmark: z.string().optional(),
+    color: z.string().optional(),
+    brand: z.string().optional(),
+    model: z.string().optional(),
+    distinguishingMarks: z.string().optional(),
+    secretQuestion: z.string().optional(),
+  });
 
-type ReportFormData = z.infer<typeof reportSchema>;
+type ReportFormData = z.infer<ReturnType<typeof createReportSchema>>;
 
 interface ReportItemPageProps {
   initialType?: 'lost' | 'found';
 }
 
 export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'lost' }) => {
+  const { t, i18n } = useTranslation(['report', 'common']);
+  const reportSchema = React.useMemo(() => createReportSchema(t), [t]);
   const { id } = useParams<{ id?: string }>();
   const isEditMode = Boolean(id);
 
@@ -172,7 +176,7 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
     const timer = setTimeout(async () => {
       setIsSearchingPlaces(true);
       try {
-        const places = await searchPlaces(placeQuery);
+        const places = await searchPlaces(placeQuery, i18n.language);
         setPlaceSuggestions(places);
         setShowSuggestions(true);
       } catch (err) {
@@ -216,7 +220,7 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
         const roundedLng = Math.round(loc.longitude * 1000) / 1000;
         setSelectedCoords({ lat: roundedLat, lng: roundedLng });
 
-        const place = await reverseGeocode(roundedLat, roundedLng);
+        const place = await reverseGeocode(roundedLat, roundedLng, i18n.language);
         if (place && place.address) {
           if (place.address.country) setValue('locationCountry', place.address.country);
           if (place.address.state) setValue('locationState', place.address.state);
@@ -243,7 +247,7 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
     const roundedLng = Math.round(lng * 1000) / 1000;
     setSelectedCoords({ lat: roundedLat, lng: roundedLng });
     try {
-      const place = await reverseGeocode(roundedLat, roundedLng);
+      const place = await reverseGeocode(roundedLat, roundedLng, i18n.language);
       if (place && place.address) {
         if (place.address.country) setValue('locationCountry', place.address.country);
         if (place.address.state) setValue('locationState', place.address.state);
@@ -946,7 +950,7 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
             to={isEditMode ? `/items/${id}` : '/'}
             className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 text-sm font-semibold transition"
           >
-            Cancel
+            {t('common:actions.cancel')}
           </Link>
           <button
             type="submit"
@@ -960,11 +964,11 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {uploadProgress || (isEditMode ? 'Saving changes...' : 'Submitting listing...')}
+                {uploadProgress || (isEditMode ? t('common:actions.saving') : t('report:form.submitting'))}
               </>
             ) : (
               <>
-                {isEditMode ? 'Save Changes' : `Submit ${currentType === 'lost' ? 'Lost' : 'Found'} Report`}
+                {isEditMode ? t('common:actions.save') : currentType === 'lost' ? t('report:form.submit_lost') : t('report:form.submit_found')}
                 <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}

@@ -1,0 +1,32 @@
+{
+  "title": "Ownership Claims",
+  "subtitle": "Review claims submitted for your items or track claims you have made",
+  "incoming_title": "Claims on Your Items",
+  "outgoing_title": "Claims You Submitted",
+  "status": {
+    "pending": "Pending Review",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "cancelled": "Cancelled"
+  },
+  "labels": {
+    "claimant_answer": "Verification Answer Provided:",
+    "claimant_message": "Message from Claimant:",
+    "claimed_on": "Claimed on {{date}}",
+    "item_name": "Item"
+  },
+  "actions": {
+    "approve": "Approve Claim",
+    "reject": "Reject Claim",
+    "cancel": "Cancel Claim",
+    "view_item": "View Item"
+  },
+  "dialog": {
+    "approve_title": "Approve this ownership claim?",
+    "approve_description": "Approving confirms that the claimant has satisfied verification. You can then exchange handover details in Messages.",
+    "reject_title": "Reject this claim?",
+    "reject_description": "Rejecting will dismiss this claim and allow other users to verify.",
+    "confirm_approve": "Yes, Approve",
+    "confirm_reject": "Yes, Reject"
+  }
+}

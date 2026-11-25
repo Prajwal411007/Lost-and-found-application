@@ -1,0 +1,22 @@
+{
+  "title": "Admin Dashboard",
+  "subtitle": "Platform moderation, community trust metrics, and global registry oversight",
+  "tabs": {
+    "overview": "Overview",
+    "items": "All Items",
+    "users": "User Directory",
+    "reports": "Flagged Reports"
+  },
+  "stats": {
+    "total_users": "Registered Users",
+    "total_items": "Total Items",
+    "open_items": "Open Inquiries",
+    "resolved_items": "Returned Items"
+  },
+  "actions": {
+    "ban_user": "Ban User",
+    "unban_user": "Unban User",
+    "delete_item": "Remove Item",
+    "dismiss_report": "Dismiss Flag"
+  }
+}
