@@ -11,11 +11,14 @@ export interface NearbyInstitution {
   website?: string;
   phone?: string;
   distance: number; // in meters
+  source?: 'overpass' | 'nominatim';
+  isUnnamed?: boolean;
 }
 
 export interface NearbyInstitutionsResponse {
   institutions: NearbyInstitution[];
   count: number;
+  unnamedCount?: number;
   centre: { lat: number; lng: number };
   radius: number;
   attribution: string;

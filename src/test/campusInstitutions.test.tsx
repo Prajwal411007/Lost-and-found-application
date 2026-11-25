@@ -312,4 +312,37 @@ describe('Campus Mode - Nearby Institutions Feature', () => {
     expect(await screen.findByText(/OpenStreetMap Service Busy/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument();
   });
+
+  it('renders "Why no results?" expandable note in the empty state with search parameters', async () => {
+    global.fetch = vi.fn((url: any) => {
+      if (url.toString().includes('/api/nearby-institutions')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              institutions: [],
+              count: 0,
+              unnamedCount: 0,
+              centre: { lat: 37.4275, lng: -122.1697 },
+              radius: 2000,
+              attribution: '© OpenStreetMap contributors',
+            }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as any);
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CampusPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText(/No institutions found within/i)).toBeInTheDocument();
+    expect(screen.getByTestId('why-no-results')).toBeInTheDocument();
+    expect(screen.getByText(/Why no results\? View query details/i)).toBeInTheDocument();
+    expect(screen.getByText(/OSM Overpass \+ Nominatim/i)).toBeInTheDocument();
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * Direct client-side OpenStreetMap Overpass service.
+ * Direct client-side OpenStreetMap Overpass service with Nominatim fallback.
  * Used as a resilient fallback when backend API routes are unavailable, returning HTML (SPA rewrites),
  * or in standalone frontend deployments on platforms like Vercel.
  */
@@ -11,16 +11,16 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
 ];
 
-// In-memory client cache (5-minute TTL)
+// In-memory client cache (24-hr TTL for non-empty, 5-min TTL for empty)
 interface CacheEntry {
   data: NearbyInstitution[];
   timestamp: number;
 }
 const clientCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_SUCCESS_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_EMPTY_MS = 5 * 60 * 1000;
 
 export function clearInstitutionsClientCache() {
   clientCache.clear();
@@ -31,10 +31,12 @@ function normalizeType(
 ): 'university' | 'college' | 'school' | 'kindergarten' | 'research_institute' | 'other' {
   const amenity = tags.amenity?.toLowerCase();
   const building = tags.building?.toLowerCase();
+  const education = tags.education?.toLowerCase();
+  const office = tags.office?.toLowerCase();
 
-  if (amenity === 'university' || building === 'university') return 'university';
-  if (amenity === 'college' || building === 'college') return 'college';
-  if (amenity === 'school') return 'school';
+  if (amenity === 'university' || building === 'university' || education === 'university') return 'university';
+  if (amenity === 'college' || building === 'college' || education === 'college') return 'college';
+  if (amenity === 'school' || building === 'school' || education === 'school') return 'school';
   if (amenity === 'kindergarten') return 'kindergarten';
   if (amenity === 'research_institute') return 'research_institute';
   return 'other';
@@ -59,9 +61,111 @@ function buildAddress(tags: Record<string, string>): string | undefined {
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
+function extractInstitutionName(tags: Record<string, string>, type: string): { name: string; isUnnamed: boolean } {
+  const resolved =
+    tags.name?.trim() ||
+    tags['name:en']?.trim() ||
+    tags.official_name?.trim() ||
+    tags.short_name?.trim() ||
+    tags.alt_name?.trim() ||
+    tags.operator?.trim();
+
+  if (resolved) {
+    return { name: resolved, isUnnamed: false };
+  }
+
+  const typeLabel = type === 'other' ? 'Institution' : type.charAt(0).toUpperCase() + type.slice(1);
+  return {
+    name: `Unnamed ${typeLabel} (OpenStreetMap)`,
+    isUnnamed: true,
+  };
+}
+
+async function queryNominatimDirect(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  typesFilter?: string[]
+): Promise<NearbyInstitution[]> {
+  const deltaLat = radiusMeters / 111320;
+  const deltaLng = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
+  const viewbox = `${lng - deltaLng},${lat + deltaLat},${lng + deltaLng},${lat - deltaLat}`;
+
+  const queryTerms = ['college', 'university', 'school'];
+  const results: NearbyInstitution[] = [];
+  const seenPlaceIds = new Set<string>();
+
+  await Promise.all(
+    queryTerms.map(async (term) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          term
+        )}&viewbox=${viewbox}&bounded=1&limit=25&addressdetails=1`;
+
+        const res = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        if (!res.ok) return;
+
+        const items = await res.json();
+        if (!Array.isArray(items)) return;
+
+        for (const item of items) {
+          const placeId = String(item.place_id || item.osm_id);
+          if (seenPlaceIds.has(placeId)) continue;
+          seenPlaceIds.add(placeId);
+
+          const itemLat = parseFloat(item.lat);
+          const itemLng = parseFloat(item.lon);
+          if (isNaN(itemLat) || isNaN(itemLng)) continue;
+
+          const distanceMeters = Math.round(haversineDistance(lat, lng, itemLat, itemLng) * 1000);
+          if (distanceMeters > radiusMeters) continue;
+
+          let instType: NearbyInstitution['type'] = 'other';
+          const rawType = (item.type || item.class || '').toLowerCase();
+          if (rawType.includes('university') || term === 'university') instType = 'university';
+          else if (rawType.includes('college') || term === 'college') instType = 'college';
+          else if (rawType.includes('school') || term === 'school') instType = 'school';
+
+          if (typesFilter && typesFilter.length > 0 && !typesFilter.includes(instType)) {
+            continue;
+          }
+
+          const name = item.name || item.display_name?.split(',')[0]?.trim() || `Unnamed ${instType} (Nominatim)`;
+
+          results.push({
+            id: `nom-${placeId}`,
+            name,
+            type: instType,
+            address: item.display_name,
+            lat: itemLat,
+            lng: itemLng,
+            distance: distanceMeters,
+            source: 'nominatim',
+          });
+        }
+      } catch {
+        // Ignore single term failure
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })
+  );
+
+  results.sort((a, b) => a.distance - b.distance);
+  return results;
+}
+
 /**
- * Queries OpenStreetMap Overpass directly from the client.
- * Respects usage policy: 15s timeout, spatial filtering, and automatic mirror failover.
+ * Queries OpenStreetMap Overpass directly from the client with Nominatim fallback.
  */
 export async function queryOverpassDirectly(
   lat: number,
@@ -74,18 +178,41 @@ export async function queryOverpassDirectly(
   const sortedTypes = typesFilter ? [...typesFilter].sort().join(',') : 'all';
   const cacheKey = `${roundedLat}_${roundedLng}_${radiusMeters}_${sortedTypes}`;
 
-  // Check client in-memory cache
+  // Check client cache with differentiated TTL
   const cached = clientCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.data;
+  if (cached) {
+    const ttl = cached.data.length > 0 ? CACHE_TTL_SUCCESS_MS : CACHE_TTL_EMPTY_MS;
+    if (Date.now() - cached.timestamp < ttl) {
+      return cached.data;
+    }
   }
 
   const query = `
-    [out:json][timeout:15];
+    [out:json][timeout:25];
     (
-      node(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute)$"];
-      way(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute)$"];
-      way(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college)$"];
+      node(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute|language_school|training)$"];
+      way(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute|language_school|training)$"];
+      relation(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute|language_school|training)$"];
+
+      node(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college|school)$"];
+      way(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college|school)$"];
+      relation(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college|school)$"];
+
+      node(around:${radiusMeters},${roundedLat},${roundedLng})["landuse"="education"];
+      way(around:${radiusMeters},${roundedLat},${roundedLng})["landuse"="education"];
+      relation(around:${radiusMeters},${roundedLat},${roundedLng})["landuse"="education"];
+
+      node(around:${radiusMeters},${roundedLat},${roundedLng})["office"="educational_institution"];
+      way(around:${radiusMeters},${roundedLat},${roundedLng})["office"="educational_institution"];
+      relation(around:${radiusMeters},${roundedLat},${roundedLng})["office"="educational_institution"];
+
+      node(around:${radiusMeters},${roundedLat},${roundedLng})["education"];
+      way(around:${radiusMeters},${roundedLat},${roundedLng})["education"];
+      relation(around:${radiusMeters},${roundedLat},${roundedLng})["education"];
+
+      node(around:${radiusMeters},${roundedLat},${roundedLng})["isced:level"];
+      way(around:${radiusMeters},${roundedLat},${roundedLng})["isced:level"];
+      relation(around:${radiusMeters},${roundedLat},${roundedLng})["isced:level"];
     );
     out center;
   `.trim();
@@ -94,10 +221,10 @@ export async function queryOverpassDirectly(
   let lastError: Error | null = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
+    try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -108,26 +235,24 @@ export async function queryOverpassDirectly(
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok || !contentType.includes('application/json')) {
         throw new Error(`Overpass returned HTTP ${res.status}`);
       }
 
       const json = await res.json();
+      if (json.remark && /runtime error|timed out|quota/i.test(json.remark)) {
+        throw new Error(`Overpass query error: ${json.remark}`);
+      }
+
       elements = json.elements || [];
       break; // Success
     } catch (err: any) {
       lastError = err;
       // Failover to next mirror
+    } finally {
+      clearTimeout(timeoutId);
     }
-  }
-
-  if (elements.length === 0 && lastError) {
-    // If all mirrors timed out, return empty or cached
-    if (cached?.data) return cached.data;
-    return [];
   }
 
   const parsed: NearbyInstitution[] = [];
@@ -135,25 +260,23 @@ export async function queryOverpassDirectly(
 
   for (const el of elements) {
     const tags = el.tags || {};
-    const name = tags.name?.trim();
-    if (!name) continue;
+    const instType = normalizeType(tags);
+
+    if (typesFilter && typesFilter.length > 0 && !typesFilter.includes(instType)) {
+      continue;
+    }
 
     const itemLat = el.lat ?? el.center?.lat;
     const itemLng = el.lon ?? el.center?.lon;
     if (itemLat === undefined || itemLng === undefined) continue;
 
-    const instType = normalizeType(tags);
-    if (typesFilter && typesFilter.length > 0 && !typesFilter.includes(instType)) {
-      continue;
-    }
+    const { name, isUnnamed } = extractInstitutionName(tags, instType);
 
     const dedupKey = `${name.toLowerCase()}_${Math.round(itemLat * 100) / 100}_${Math.round(itemLng * 100) / 100}`;
     if (seenKeys.has(dedupKey)) continue;
     seenKeys.add(dedupKey);
 
-    // Distance in meters using Haversine formula
-    const distanceKm = haversineDistance(lat, lng, itemLat, itemLng);
-    const distanceMeters = Math.round(distanceKm * 1000);
+    const distanceMeters = Math.round(haversineDistance(lat, lng, itemLat, itemLng) * 1000);
 
     parsed.push({
       id: `osm-${el.type}-${el.id}`,
@@ -165,14 +288,30 @@ export async function queryOverpassDirectly(
       website: tags['contact:website'] || tags.website || tags.url,
       phone: tags['contact:phone'] || tags.phone,
       distance: distanceMeters,
+      source: 'overpass',
+      isUnnamed,
     });
   }
 
-  // Sort nearest first
   parsed.sort((a, b) => a.distance - b.distance);
 
-  // Cache parsed result
-  clientCache.set(cacheKey, { data: parsed, timestamp: Date.now() });
+  // If Overpass returned 0 results or failed, attempt Nominatim fallback
+  if (parsed.length === 0) {
+    try {
+      const nomResults = await queryNominatimDirect(lat, lng, radiusMeters, typesFilter);
+      if (nomResults.length > 0) {
+        clientCache.set(cacheKey, { data: nomResults, timestamp: Date.now() });
+        return nomResults;
+      }
+    } catch {
+      // Ignore
+    }
 
+    if (lastError && cached?.data) {
+      return cached.data;
+    }
+  }
+
+  clientCache.set(cacheKey, { data: parsed, timestamp: Date.now() });
   return parsed;
 }

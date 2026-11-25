@@ -13,4 +13,6 @@ coverage/
 .vscode/
 .idea/
 .DS_Store
+scratch/
+test_service_direct.ts
 

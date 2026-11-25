@@ -1,7 +1,6 @@
 /**
- * Service for querying nearby educational and research institutions via OpenStreetMap (Overpass API).
- * Implements Overpass usage policy: 1-at-a-time serialized queue, 15s timeout, 24-hr caching,
- * and automatic mirror fallback.
+ * Service for querying nearby educational and research institutions via OpenStreetMap (Overpass API)
+ * with automatic Nominatim fallback and differentiated cache TTLs.
  */
 
 export interface NearbyInstitution {
@@ -14,6 +13,8 @@ export interface NearbyInstitution {
   website?: string;
   phone?: string;
   distance: number; // in meters
+  source?: 'overpass' | 'nominatim';
+  isUnnamed?: boolean;
 }
 
 interface CacheEntry {
@@ -21,23 +22,22 @@ interface CacheEntry {
   timestamp: number;
 }
 
-// 24-hour server-side TTL cache
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Differentiated cache TTLs: 24h for non-empty results, 5m for empty results
+const CACHE_TTL_SUCCESS_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_EMPTY_MS = 5 * 60 * 1000;
 const cache = new Map<string, CacheEntry>();
 
 // In-flight deduplication
 const inFlightRequests = new Map<string, Promise<NearbyInstitution[]>>();
 
-// Overpass API Servers (Primary + Mirrors)
+// Overpass API Servers (Primary + Fast Mirrors)
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
-  'https://z.overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
 
-// Mutex queue to guarantee 1 request at a time to Overpass
+// Mutex queue to serialize requests to Overpass
 let queueTail: Promise<any> = Promise.resolve();
 
 function enqueueRequest<T>(task: () => Promise<T>): Promise<T> {
@@ -46,7 +46,7 @@ function enqueueRequest<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
-function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+export function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3; // Earth radius in meters
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -58,19 +58,21 @@ function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return Math.round(R * c);
 }
 
-function normalizeType(tags: Record<string, string>): NearbyInstitution['type'] {
+export function normalizeType(tags: Record<string, string>): NearbyInstitution['type'] {
   const amenity = tags.amenity?.toLowerCase();
   const building = tags.building?.toLowerCase();
+  const education = tags.education?.toLowerCase();
+  const office = tags.office?.toLowerCase();
 
-  if (amenity === 'university' || building === 'university') return 'university';
-  if (amenity === 'college' || building === 'college') return 'college';
-  if (amenity === 'school' || building === 'school') return 'school';
+  if (amenity === 'university' || building === 'university' || education === 'university') return 'university';
+  if (amenity === 'college' || building === 'college' || education === 'college') return 'college';
+  if (amenity === 'school' || building === 'school' || education === 'school') return 'school';
   if (amenity === 'kindergarten') return 'kindergarten';
   if (amenity === 'research_institute') return 'research_institute';
   return 'other';
 }
 
-function buildAddress(tags: Record<string, string>): string | undefined {
+export function buildAddress(tags: Record<string, string>): string | undefined {
   const parts: string[] = [];
   const house = tags['addr:housenumber'];
   const street = tags['addr:street'];
@@ -87,18 +89,40 @@ function buildAddress(tags: Record<string, string>): string | undefined {
 }
 
 /**
- * Executes Overpass query with mirror fallback and 15s timeout
+ * Resolves institution name across multiple standard OSM tags.
+ * Unnamed institutions are never dropped: they receive a descriptive label.
+ */
+export function extractInstitutionName(tags: Record<string, string>, type: string): { name: string; isUnnamed: boolean } {
+  const resolved =
+    tags.name?.trim() ||
+    tags['name:en']?.trim() ||
+    tags.official_name?.trim() ||
+    tags.short_name?.trim() ||
+    tags.alt_name?.trim() ||
+    tags.operator?.trim();
+
+  if (resolved) {
+    return { name: resolved, isUnnamed: false };
+  }
+
+  const typeLabel = type === 'other' ? 'Institution' : type.charAt(0).toUpperCase() + type.slice(1);
+  return {
+    name: `Unnamed ${typeLabel} (OpenStreetMap)`,
+    isUnnamed: true,
+  };
+}
+
+/**
+ * Executes Overpass query with mirror fallback and timeout handling
  */
 async function executeOverpassQuery(query: string): Promise<any> {
   let lastError: Error | null = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, 8000); // 8s timeout per mirror for responsive failover
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
+    try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -110,17 +134,23 @@ async function executeOverpassQuery(query: string): Promise<any> {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (!res.ok) {
         throw new Error(`Overpass server returned HTTP ${res.status}`);
       }
 
-      const json = await res.json();
+      const json: any = await res.json();
+
+      // Check for Overpass remark errors (timeouts or memory limit errors inside 200 responses)
+      if (json.remark && /runtime error|timed out|quota/i.test(json.remark)) {
+        throw new Error(`Overpass query error: ${json.remark}`);
+      }
+
       return json;
     } catch (err: any) {
       lastError = err;
       // Try next mirror
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -128,7 +158,94 @@ async function executeOverpassQuery(query: string): Promise<any> {
 }
 
 /**
- * Fetch nearby institutions from Overpass API or 24-hr cache.
+ * Fallback to OpenStreetMap Nominatim bounded search when Overpass returns 0 results or fails.
+ */
+export async function queryNominatimFallback(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  typesFilter?: string[]
+): Promise<NearbyInstitution[]> {
+  const deltaLat = radiusMeters / 111320;
+  const deltaLng = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
+  const viewbox = `${lng - deltaLng},${lat + deltaLat},${lng + deltaLng},${lat - deltaLat}`;
+
+  const queryTerms = ['college', 'university', 'school'];
+  const results: NearbyInstitution[] = [];
+  const seenPlaceIds = new Set<string>();
+
+  await Promise.all(
+    queryTerms.map(async (term) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          term
+        )}&viewbox=${viewbox}&bounded=1&limit=25&addressdetails=1`;
+
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': 'FindIt-Global-Platform/1.0 (Lost & Found Non-Profit; contact: info@findit.org)',
+            'Accept': 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        if (!res.ok) return;
+
+        const items = await res.json();
+        if (!Array.isArray(items)) return;
+
+        for (const item of items) {
+          const placeId = String(item.place_id || item.osm_id);
+          if (seenPlaceIds.has(placeId)) continue;
+          seenPlaceIds.add(placeId);
+
+          const itemLat = parseFloat(item.lat);
+          const itemLng = parseFloat(item.lon);
+          if (isNaN(itemLat) || isNaN(itemLng)) continue;
+
+          const distance = haversineDistanceMeters(lat, lng, itemLat, itemLng);
+          if (distance > radiusMeters) continue;
+
+          let instType: NearbyInstitution['type'] = 'other';
+          const rawType = (item.type || item.class || '').toLowerCase();
+          if (rawType.includes('university') || term === 'university') instType = 'university';
+          else if (rawType.includes('college') || term === 'college') instType = 'college';
+          else if (rawType.includes('school') || term === 'school') instType = 'school';
+
+          if (typesFilter && typesFilter.length > 0 && !typesFilter.includes(instType)) {
+            continue;
+          }
+
+          const name = item.name || item.display_name?.split(',')[0]?.trim() || `Unnamed ${instType} (Nominatim)`;
+
+          results.push({
+            id: `nom-${placeId}`,
+            name,
+            type: instType,
+            address: item.display_name,
+            lat: itemLat,
+            lng: itemLng,
+            distance,
+            source: 'nominatim',
+          });
+        }
+      } catch {
+        // Ignore single term failure
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })
+  );
+
+  results.sort((a, b) => a.distance - b.distance);
+  return results;
+}
+
+/**
+ * Fetch nearby institutions from Overpass API (with Nominatim fallback and differentiated cache TTL).
  */
 export async function getNearbyInstitutions(
   lat: number,
@@ -142,10 +259,13 @@ export async function getNearbyInstitutions(
   const sortedTypes = typesFilter ? [...typesFilter].sort().join(',') : 'all';
   const cacheKey = `${roundedLat}_${roundedLng}_${radiusMeters}_${sortedTypes}`;
 
-  // Check 24-hr server-side cache
+  // Check server-side cache with differentiated TTL (24h for success, 5m for empty)
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.data;
+  if (cached) {
+    const ttl = cached.data.length > 0 ? CACHE_TTL_SUCCESS_MS : CACHE_TTL_EMPTY_MS;
+    if (Date.now() - cached.timestamp < ttl) {
+      return cached.data;
+    }
   }
 
   // Check in-flight request deduplication
@@ -154,32 +274,52 @@ export async function getNearbyInstitutions(
   }
 
   const fetchPromise = enqueueRequest(async () => {
-    // Construct Overpass QL query with "around" filter and out center
+    // Construct expanded Overpass QL query searching nodes, ways, and relations
     const query = `
       [out:json][timeout:25];
       (
-        node(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute)$"];
-        way(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute)$"];
-        way(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college)$"];
+        node(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute|language_school|training)$"];
+        way(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute|language_school|training)$"];
+        relation(around:${radiusMeters},${roundedLat},${roundedLng})["amenity"~"^(university|college|school|kindergarten|research_institute|language_school|training)$"];
+
+        node(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college|school)$"];
+        way(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college|school)$"];
+        relation(around:${radiusMeters},${roundedLat},${roundedLng})["building"~"^(university|college|school)$"];
+
+        node(around:${radiusMeters},${roundedLat},${roundedLng})["landuse"="education"];
+        way(around:${radiusMeters},${roundedLat},${roundedLng})["landuse"="education"];
+        relation(around:${radiusMeters},${roundedLat},${roundedLng})["landuse"="education"];
+
+        node(around:${radiusMeters},${roundedLat},${roundedLng})["office"="educational_institution"];
+        way(around:${radiusMeters},${roundedLat},${roundedLng})["office"="educational_institution"];
+        relation(around:${radiusMeters},${roundedLat},${roundedLng})["office"="educational_institution"];
+
+        node(around:${radiusMeters},${roundedLat},${roundedLng})["education"];
+        way(around:${radiusMeters},${roundedLat},${roundedLng})["education"];
+        relation(around:${radiusMeters},${roundedLat},${roundedLng})["education"];
+
+        node(around:${radiusMeters},${roundedLat},${roundedLng})["isced:level"];
+        way(around:${radiusMeters},${roundedLat},${roundedLng})["isced:level"];
+        relation(around:${radiusMeters},${roundedLat},${roundedLng})["isced:level"];
       );
       out center;
     `.trim();
 
-    const result = await executeOverpassQuery(query);
-    const elements: any[] = result.elements || [];
+    let elements: any[] = [];
+    let overpassFailed = false;
+
+    try {
+      const result = await executeOverpassQuery(query);
+      elements = result.elements || [];
+    } catch (err) {
+      overpassFailed = true;
+    }
 
     const parsed: NearbyInstitution[] = [];
-    const seenNamesAndCoords = new Set<string>();
+    const seenKeys = new Set<string>();
 
     for (const el of elements) {
       const tags = el.tags || {};
-      const name = tags.name?.trim();
-      if (!name) continue; // Skip unnamed features per spec
-
-      const itemLat = el.lat ?? el.center?.lat;
-      const itemLng = el.lon ?? el.center?.lon;
-      if (itemLat === undefined || itemLng === undefined) continue;
-
       const instType = normalizeType(tags);
 
       // Filter by types if specified
@@ -187,10 +327,16 @@ export async function getNearbyInstitutions(
         continue;
       }
 
-      // Deduplicate overlapping nodes and ways for the same institution
+      const itemLat = el.lat ?? el.center?.lat;
+      const itemLng = el.lon ?? el.center?.lon;
+      if (itemLat === undefined || itemLng === undefined) continue;
+
+      const { name, isUnnamed } = extractInstitutionName(tags, instType);
+
+      // Deduplicate overlapping nodes, ways, and relations for the same institution
       const dedupKey = `${name.toLowerCase()}_${Math.round(itemLat * 100) / 100}_${Math.round(itemLng * 100) / 100}`;
-      if (seenNamesAndCoords.has(dedupKey)) continue;
-      seenNamesAndCoords.add(dedupKey);
+      if (seenKeys.has(dedupKey)) continue;
+      seenKeys.add(dedupKey);
 
       const distance = haversineDistanceMeters(lat, lng, itemLat, itemLng);
 
@@ -204,13 +350,36 @@ export async function getNearbyInstitutions(
         website: tags.website || tags['contact:website'] || tags.url,
         phone: tags.phone || tags['contact:phone'],
         distance,
+        source: 'overpass',
+        isUnnamed,
       });
     }
 
     // Sort nearest first
     parsed.sort((a, b) => a.distance - b.distance);
 
-    // Store in 24-hr cache
+    // If Overpass returned 0 results or failed, attempt Nominatim bounded fallback
+    if (parsed.length === 0) {
+      try {
+        const nominatimResults = await queryNominatimFallback(lat, lng, radiusMeters, typesFilter);
+        if (nominatimResults.length > 0) {
+          cache.set(cacheKey, {
+            data: nominatimResults,
+            timestamp: Date.now(),
+          });
+          return nominatimResults;
+        }
+      } catch {
+        // Fallback failed
+      }
+
+      // If Overpass failed and Nominatim also yielded nothing, throw error (never return fake empty list on outage)
+      if (overpassFailed) {
+        throw new Error('All OpenStreetMap institution servers failed or timed out. Please try again.');
+      }
+    }
+
+    // Cache results (differentiated TTL: 24h if non-empty, 5m if genuinely empty)
     cache.set(cacheKey, {
       data: parsed,
       timestamp: Date.now(),

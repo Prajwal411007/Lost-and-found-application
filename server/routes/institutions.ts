@@ -31,10 +31,12 @@ institutionsRouter.get('/', searchLimiter, async (req: Request, res: Response) =
 
   try {
     const institutions = await getNearbyInstitutions(lat, lng, radius, typesFilter);
+    const unnamedCount = institutions.filter((i) => i.isUnnamed).length;
 
     res.json({
       institutions,
       count: institutions.length,
+      unnamedCount,
       centre: {
         lat: Math.round(lat * 10000) / 10000,
         lng: Math.round(lng * 10000) / 10000,

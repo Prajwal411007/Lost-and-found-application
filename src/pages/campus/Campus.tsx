@@ -158,8 +158,14 @@ export const CampusPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const campusSlug = searchParams.get('place') || 'stanford-university';
+  const paramLat = searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : null;
+  const paramLng = searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : null;
+  const hasUrlCoords = paramLat !== null && paramLng !== null && !isNaN(paramLat) && !isNaN(paramLng);
 
-  const { coords: geoCoords, status: geoStatus } = useGeolocation();
+  const { coords: geoCoords, status: geoStatus, requestLocation } = useGeolocation();
+
+  // Precedence state: user geolocation > dragged/searched pin > campus preset dropdown
+  const [isManualCenter, setIsManualCenter] = useState(hasUrlCoords);
 
   // Tab mode: 'institutions' | 'buildings'
   const [activeTab, setActiveTab] = useState<'institutions' | 'buildings'>('institutions');
@@ -171,11 +177,19 @@ export const CampusPage: React.FC = () => {
   const [buildingSearch, setBuildingSearch] = useState('');
   const [campusItems, setCampusItems] = useState<Item[]>([]);
 
-  // Search centre state (default follows campus, overridden by user location or manual search)
+  // Search centre state (priority: real user geolocation > dragged/searched pin > preset campus fallback)
   const [searchCenter, setSearchCenter] = useState<{ lat: number; lng: number }>({
-    lat: FALLBACK_CAMPUSES[0].latitude,
-    lng: FALLBACK_CAMPUSES[0].longitude,
+    lat: hasUrlCoords ? paramLat! : FALLBACK_CAMPUSES[0].latitude,
+    lng: hasUrlCoords ? paramLng! : FALLBACK_CAMPUSES[0].longitude,
   });
+
+  // URL coordinates listener
+  useEffect(() => {
+    if (hasUrlCoords) {
+      setSearchCenter({ lat: paramLat!, lng: paramLng! });
+      setIsManualCenter(true);
+    }
+  }, [paramLat, paramLng, hasUrlCoords]);
 
   // Manual city/place search autocomplete
   const [placeSearchInput, setPlaceSearchInput] = useState('');
@@ -190,7 +204,7 @@ export const CampusPage: React.FC = () => {
   // Nearby institutions filters
   const [selectedRadius, setSelectedRadius] = useState<number>(2000); // 2000m default
   const [selectedType, setSelectedType] = useState<string>('all'); // 'all', 'university', 'college', 'school', 'other'
-  const [institutionNameQuery, setInstitutionNameQuery] = useState('');
+  const [institutionNameQuery, setInstitutionNameQuery] = useState(searchParams.get('q') || '');
   const [focusMarkerId, setFocusMarkerId] = useState<string | null>(null);
 
   // Mobile drawer state
@@ -250,29 +264,30 @@ export const CampusPage: React.FC = () => {
       });
   }, []);
 
-  // Update selected campus from slug & set initial search center
+  // Update selected campus from slug & fallback search center
+  // Priority rule: Real user geolocation (when granted) > dragged/searched pin > preset campus fallback
   useEffect(() => {
     const found = campuses.find((c) => c.slug === campusSlug) || campuses[0];
     setSelectedCampus(found);
 
-    // If no manual search center was explicitly picked, center on campus
-    if (!placeSearchInput) {
+    // Only fallback to preset campus coordinates if user has NOT granted geolocation and NO manual center was selected
+    if (!isManualCenter && (!geoCoords || geoStatus !== 'granted')) {
       setSearchCenter({
         lat: found.latitude,
         lng: found.longitude,
       });
     }
-  }, [campusSlug, campuses]);
+  }, [campusSlug, campuses, geoCoords, geoStatus, isManualCenter]);
 
-  // Update center if geolocation becomes available
+  // Center on user geolocation when granted (takes top priority over preset campus)
   useEffect(() => {
-    if (geoCoords && geoStatus === 'granted') {
+    if (geoCoords && geoStatus === 'granted' && !isManualCenter) {
       setSearchCenter({
         lat: geoCoords.latitude,
         lng: geoCoords.longitude,
       });
     }
-  }, [geoCoords, geoStatus]);
+  }, [geoCoords, geoStatus, isManualCenter]);
 
   // Load buildings and campus items
   useEffect(() => {
@@ -364,6 +379,7 @@ export const CampusPage: React.FC = () => {
   }, [placeSearchInput]);
 
   const handleSelectPlaceSuggestion = (place: any) => {
+    setIsManualCenter(true);
     const lat = parseFloat(place.lat);
     const lng = parseFloat(place.lon);
     setSearchCenter({ lat, lng });
@@ -374,12 +390,27 @@ export const CampusPage: React.FC = () => {
   };
 
   const handleSelectCampus = (slug: string) => {
+    setIsManualCenter(true);
     const next = new URLSearchParams(searchParams);
     next.set('place', slug);
     setSearchParams(next);
+    const found = campuses.find((c) => c.slug === slug);
+    if (found) {
+      setSearchCenter({ lat: found.latitude, lng: found.longitude });
+    }
     setTargetDestination(null);
     setSelectedBuilding(null);
     setShowSearchAreaButton(false);
+  };
+
+  const handleUseMyLocation = async () => {
+    setIsManualCenter(false);
+    setPlaceSearchInput('');
+    if (geoCoords && geoStatus === 'granted') {
+      setSearchCenter({ lat: geoCoords.latitude, lng: geoCoords.longitude });
+    } else {
+      await requestLocation();
+    }
   };
 
   // Map Movement Handler
@@ -397,6 +428,7 @@ export const CampusPage: React.FC = () => {
 
   const handleSearchThisArea = () => {
     if (mapPannedCenter) {
+      setIsManualCenter(true);
       setSearchCenter(mapPannedCenter);
       setShowSearchAreaButton(false);
       setTargetDestination(null);
@@ -640,6 +672,17 @@ export const CampusPage: React.FC = () => {
             )}
           </div>
 
+          {/* Quick "Use My Location" Button */}
+          <button
+            type="button"
+            onClick={handleUseMyLocation}
+            title="Center on my real GPS location"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 text-xs sm:text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 shadow-xs focus:ring-2 focus:ring-teal-500 transition cursor-pointer shrink-0"
+          >
+            <Navigation className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+            <span className="hidden sm:inline">My Location</span>
+          </button>
+
           {/* Preset Campus Quick Selector */}
           <select
             value={selectedCampus.slug}
@@ -862,6 +905,10 @@ export const CampusPage: React.FC = () => {
                     ? 'Querying OpenStreetMap...'
                     : `Found ${institutions.length} institutions within ${
                         selectedRadius < 1000 ? `${selectedRadius} m` : `${selectedRadius / 1000} km`
+                      }${
+                        institutionsData?.unnamedCount
+                          ? ` (${institutionsData.unnamedCount} unnamed)`
+                          : ''
                       }`}
                 </span>
                 <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold uppercase">
@@ -878,14 +925,66 @@ export const CampusPage: React.FC = () => {
                 ) : isErrorInstitutions ? (
                   renderInstitutionErrorState()
                 ) : institutions.length === 0 ? (
-                  <div className="py-8 text-center space-y-2 text-slate-500 dark:text-slate-400">
+                  <div className="py-6 px-4 text-center space-y-3 text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/40 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
                     <School className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
-                    <p className="text-xs font-bold">
-                      No institutions found within {selectedRadius < 1000 ? `${selectedRadius} m` : `${selectedRadius / 1000} km`}.
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Try increasing the search radius to 5 km or 10 km, or pan the map to a nearby town.
-                    </p>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        No institutions found within {selectedRadius < 1000 ? `${selectedRadius} m` : `${selectedRadius / 1000} km`}.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Try expanding the search radius or clicking &quot;Use My Location&quot; below.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                      {selectedRadius < 10000 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRadius((r) => Math.min(r * 2, 10000))}
+                          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center space-x-1"
+                        >
+                          <span>Expand to {selectedRadius < 2500 ? '5 km' : '10 km'}</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleUseMyLocation}
+                        className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1"
+                      >
+                        <Navigation className="w-3 h-3 text-teal-600" />
+                        <span>Use My Location</span>
+                      </button>
+                    </div>
+
+                    {/* Expandable Debug Aid: Why no results? */}
+                    <details open className="mt-3 text-left border-t border-slate-200 dark:border-slate-700/60 pt-2.5 text-xs group" data-testid="why-no-results">
+                      <summary className="font-semibold text-[11px] text-teal-600 dark:text-teal-400 cursor-pointer hover:underline flex items-center justify-between">
+                        <span>Why no results? View query details</span>
+                        <ChevronDown className="w-3.5 h-3.5 transition group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-2 p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300 font-mono">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Search Center:</span>
+                          <span className="font-bold">{searchCenter.lat.toFixed(5)}, {searchCenter.lng.toFixed(5)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Search Radius:</span>
+                          <span className="font-bold">{selectedRadius < 1000 ? `${selectedRadius} m` : `${selectedRadius / 1000} km`}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Category Filter:</span>
+                          <span className="font-bold capitalize">{selectedType}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Data Sources:</span>
+                          <span className="font-bold">OSM Overpass + Nominatim</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Raw Elements:</span>
+                          <span className="font-bold">0 in radius</span>
+                        </div>
+                      </div>
+                    </details>
                   </div>
                 ) : (
                   institutions.map((inst) => (
@@ -909,6 +1008,16 @@ export const CampusPage: React.FC = () => {
                             >
                               {inst.type}
                             </span>
+                            {inst.source === 'nominatim' && (
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                                Nominatim
+                              </span>
+                            )}
+                            {inst.isUnnamed && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                Unnamed
+                              </span>
+                            )}
                             <span className="text-[11px] font-semibold text-slate-400">
                               {formatDistance(inst.distance)}
                             </span>
