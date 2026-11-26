@@ -17,6 +17,8 @@ import {
   Sparkles,
   Loader2,
   ChevronRight,
+  MapPin,
+  BarChart3,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,7 +31,7 @@ import { ConfigurationRequired } from '@/components/common/ConfigurationRequired
 export const AdminPage: React.FC = () => {
   const { user, profile, isAdmin, isConfigured } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'users' | 'categories'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'users' | 'categories' | 'insights' | 'audit'>('overview');
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalItems: 0,
@@ -39,6 +41,8 @@ export const AdminPage: React.FC = () => {
     pendingReports: 0,
   });
   const [reports, setReports] = useState<AbuseReport[]>([]);
+  const [fraudFlags, setFraudFlags] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<Profile[]>([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -72,6 +76,13 @@ export const AdminPage: React.FC = () => {
         setReports(repData.reports || []);
       }
 
+      // 2b. Rule-based Fraud Flags
+      const flagsRes = await fetch('/api/admin/fraud-flags', { headers });
+      if (flagsRes.ok) {
+        const flagsData = await flagsRes.json();
+        setFraudFlags(flagsData.flags || []);
+      }
+
       // 3. User profiles list
       const { data: profilesData } = await supabase
         .from('profiles')
@@ -82,10 +93,48 @@ export const AdminPage: React.FC = () => {
       if (profilesData) {
         setUsersList(profilesData as Profile[]);
       }
+
+      // 4. Immutable Audit Logs
+      const auditRes = await fetch('/api/admin/audit-logs', { headers });
+      if (auditRes.ok) {
+        const auditData = await auditRes.json();
+        setAuditLogs(auditData.logs || []);
+      }
     } catch (err) {
       console.error('Error loading admin console:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExecuteAdminAction = async (payload: {
+    action: 'dismiss_flag' | 'warn_user' | 'lock_claims' | 'suspend_user' | 'resolve_dispute';
+    target_user_id?: string | null;
+    target_item_id?: string | null;
+    target_claim_id?: string | null;
+    reason: string;
+    duration_hours?: number;
+    metadata?: Record<string, any>;
+  }) => {
+    setActionInProgress(payload.action);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch('/api/admin/actions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Action failed');
+      alert(data.message || 'Action executed and logged to audit trail.');
+      await loadAdminData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to execute action');
+    } finally {
+      setActionInProgress(null);
     }
   };
 
@@ -150,6 +199,25 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const handleUpdateFraudFlag = async (flagId: string, status: 'reviewed' | 'dismissed') => {
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch(`/api/admin/fraud-flags/${flagId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        setFraudFlags((prev) => prev.map((f) => (f.id === flagId ? { ...f, status } : f)));
+      }
+    } catch (err) {
+      console.error('Error updating flag status:', err);
+    }
+  };
+
   const handleAdminDeleteItem = async (itemId: string, reportId?: string) => {
     if (!confirm('Permanently remove this listing from the database?')) return;
 
@@ -209,11 +277,13 @@ export const AdminPage: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-slate-200 dark:border-slate-800 flex space-x-2 text-sm font-semibold">
+      <div className="border-b border-slate-200 dark:border-slate-800 flex space-x-2 text-sm font-semibold overflow-x-auto">
         {[
           { id: 'overview', label: 'Platform Analytics', icon: Activity },
-          { id: 'moderation', label: `Moderation Queue (${reports.filter((r) => r.status === 'pending').length})`, icon: Flag },
+          { id: 'moderation', label: `Moderation Queue (${reports.filter((r) => r.status === 'pending').length + fraudFlags.filter((f) => f.status === 'pending').length})`, icon: Flag },
           { id: 'users', label: `User Management (${usersList.length})`, icon: Users },
+          { id: 'insights', label: 'Hotspots & Insights', icon: MapPin },
+          { id: 'audit', label: `Audit Trail (${auditLogs.length})`, icon: Clock },
         ].map((t) => (
           <button
             key={t.id}
@@ -303,8 +373,120 @@ export const AdminPage: React.FC = () => {
 
           {/* TAB: MODERATION QUEUE */}
           {activeTab === 'moderation' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+            <div className="space-y-6">
+              {/* Fraud Flags Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    Rule-based Fraud Flags & Anomalies ({fraudFlags.filter((f) => f.status === 'pending').length} pending)
+                  </h3>
+                </div>
+
+                {fraudFlags.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-400">
+                    No automated fraud flags detected.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {fraudFlags.map((flag) => (
+                      <div
+                        key={flag.id}
+                        className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded font-bold uppercase text-[10px] ${
+                                flag.severity === 'high'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {flag.flag_type.replace('_', ' ')}
+                            </span>
+                            <span className="text-slate-400">
+                              Status: <strong>{flag.status}</strong>
+                            </span>
+                          </div>
+                          <p className="text-slate-800 dark:text-slate-200 font-medium">
+                            {flag.reason}
+                          </p>
+                          <span className="text-slate-400 text-[11px] block">
+                            User: {flag.user?.full_name || flag.user?.email || flag.user_id}
+                          </span>
+                        </div>
+
+                        {flag.status === 'pending' && (
+                          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => {
+                                const reason = prompt('Warning reason / policy explanation:', flag.reason);
+                                if (!reason) return;
+                                handleExecuteAdminAction({
+                                  action: 'warn_user',
+                                  target_user_id: flag.user_id,
+                                  reason,
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-semibold text-xs border border-amber-200 dark:border-amber-800 cursor-pointer"
+                            >
+                              Warn User
+                            </button>
+                            <button
+                              onClick={() => {
+                                const hoursStr = prompt('Lock claims duration in hours (e.g. 24, 48, 168):', '24');
+                                if (!hoursStr) return;
+                                const hours = parseInt(hoursStr, 10);
+                                if (isNaN(hours) || hours <= 0) return;
+                                const reason = prompt('Reason for claim lock:', 'Automated fraud rule violation: ' + flag.reason);
+                                if (!reason) return;
+                                handleExecuteAdminAction({
+                                  action: 'lock_claims',
+                                  target_user_id: flag.user_id,
+                                  duration_hours: hours,
+                                  reason,
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 font-semibold text-xs border border-orange-200 dark:border-orange-800 cursor-pointer"
+                            >
+                              Lock Claims
+                            </button>
+                            <button
+                              onClick={() => {
+                                const reason = prompt('Account suspension reason:', 'Severe fraud violation: ' + flag.reason);
+                                if (!reason) return;
+                                handleExecuteAdminAction({
+                                  action: 'suspend_user',
+                                  target_user_id: flag.user_id,
+                                  reason,
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 font-semibold text-xs border border-rose-200 dark:border-rose-800 cursor-pointer"
+                            >
+                              Suspend
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleExecuteAdminAction({
+                                  action: 'dismiss_flag',
+                                  metadata: { flag_id: flag.id },
+                                  reason: 'Flag dismissed by moderator',
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-semibold text-xs cursor-pointer"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   Reported Listings & Content Queue
                 </h3>
@@ -487,6 +669,204 @@ export const AdminPage: React.FC = () => {
                   </table>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB: AUDIT TRAIL */}
+          {activeTab === 'audit' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-emerald-600" />
+                    Immutable Administrative Audit Trail
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Protected by PostgreSQL Row Level Security with append-only policies (updates and deletes strictly blocked).
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  {auditLogs.length} Records Logged
+                </span>
+              </div>
+
+              {auditLogs.length === 0 ? (
+                <EmptyState
+                  title="Audit trail is empty"
+                  description="Administrative actions (warnings, locks, suspensions, dismissals) will appear here."
+                />
+              ) : (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-slate-500 uppercase tracking-wider font-semibold">
+                        <tr>
+                          <th className="p-3.5">Timestamp</th>
+                          <th className="p-3.5">Admin</th>
+                          <th className="p-3.5">Action</th>
+                          <th className="p-3.5">Target</th>
+                          <th className="p-3.5">Reason & Details</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                        {auditLogs.map((log) => (
+                          <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20">
+                            <td className="p-3.5 text-slate-500 whitespace-nowrap">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                                {formatRelativeTime(log.created_at)}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">{formatDate(log.created_at)}</span>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="font-bold text-slate-900 dark:text-white block">
+                                {log.admin?.full_name || log.admin?.email || 'Admin'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">{log.admin_id.substring(0, 8)}...</span>
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  log.action === 'suspend_user'
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                    : log.action === 'lock_claims'
+                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300'
+                                    : log.action === 'warn_user'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                }`}
+                              >
+                                {log.action.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 text-[11px]">
+                              {log.target_user_id ? `User: ${log.target_user_id.substring(0, 8)}...` : log.target_item_id ? `Item: ${log.target_item_id.substring(0, 8)}...` : '—'}
+                            </td>
+                            <td className="p-3.5 text-slate-700 dark:text-slate-300 max-w-xs">
+                              <p className="font-medium">{log.reason}</p>
+                              {log.metadata?.duration_hours && (
+                                <span className="text-[10px] text-orange-600 dark:text-orange-400 block mt-0.5">
+                                  Duration: {log.metadata.duration_hours} hours
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: INSIGHTS & HOTSPOTS */}
+          {activeTab === 'insights' && (
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-rose-500" />
+                    Hotspots & Recovery Performance
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Cluster analysis, category return rates, and time-to-reunion metrics aggregated into ~1.1km grid cells for privacy.
+                  </p>
+                </div>
+                <Link
+                  to="/insights"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-xs"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open Full Interactive Heatmap
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: AUDIT TRAIL */}
+          {activeTab === 'audit' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-emerald-600" />
+                    Immutable Administrative Audit Trail
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Protected by PostgreSQL Row Level Security with append-only policies (updates and deletes strictly blocked).
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  {auditLogs.length} Records Logged
+                </span>
+              </div>
+
+              {auditLogs.length === 0 ? (
+                <EmptyState
+                  title="Audit trail is empty"
+                  description="Administrative actions (warnings, locks, suspensions, dismissals) will appear here."
+                />
+              ) : (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-slate-500 uppercase tracking-wider font-semibold">
+                        <tr>
+                          <th className="p-3.5">Timestamp</th>
+                          <th className="p-3.5">Admin</th>
+                          <th className="p-3.5">Action</th>
+                          <th className="p-3.5">Target</th>
+                          <th className="p-3.5">Reason & Details</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                        {auditLogs.map((log) => (
+                          <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20">
+                            <td className="p-3.5 text-slate-500 whitespace-nowrap">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                                {formatRelativeTime(log.created_at)}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">{formatDate(log.created_at)}</span>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="font-bold text-slate-900 dark:text-white block">
+                                {log.admin?.full_name || log.admin?.email || 'Admin'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">{log.admin_id.substring(0, 8)}...</span>
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  log.action === 'suspend_user'
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                    : log.action === 'lock_claims'
+                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300'
+                                    : log.action === 'warn_user'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                }`}
+                              >
+                                {log.action.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 text-[11px]">
+                              {log.target_user_id ? `User: ${log.target_user_id.substring(0, 8)}...` : log.target_item_id ? `Item: ${log.target_item_id.substring(0, 8)}...` : '—'}
+                            </td>
+                            <td className="p-3.5 text-slate-700 dark:text-slate-300 max-w-xs">
+                              <p className="font-medium">{log.reason}</p>
+                              {log.metadata?.duration_hours && (
+                                <span className="text-[10px] text-orange-600 dark:text-orange-400 block mt-0.5">
+                                  Duration: {log.metadata.duration_hours} hours
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

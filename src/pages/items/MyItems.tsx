@@ -88,7 +88,7 @@ export const MyItemsPage: React.FC = () => {
 
   useEffect(() => {
     fetchItems();
-  }, [user]);
+  }, [user?.id]);
 
   const handleOpenAdd = () => {
     setEditingItem(null);

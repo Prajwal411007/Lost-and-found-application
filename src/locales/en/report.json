@@ -46,5 +46,37 @@
     "found_desc": "Thank you for reporting this found item! You are making your community a better place.",
     "view_item": "View Item Report",
     "browse_more": "Browse Other Items"
+  },
+  "duplicate_modal": {
+    "title": "Similar Open Report Detected",
+    "subtitle": "We found an active listing that looks very similar. Check if this item is already reported to avoid duplicate clutter.",
+    "view_existing": "Open Existing Report",
+    "continue_submit": "Continue Creating New Report"
+  },
+  "vision": {
+    "analyzing": "Analyzing photo with Vision AI...",
+    "suggestion_badge": "AI Suggestion",
+    "apply_all": "Apply Suggestions",
+    "category": "Category",
+    "color": "Color",
+    "suggested_tags": "Detected Attributes"
+  },
+  "private_details": {
+    "title": "Hidden Proof Details (Private Verification)",
+    "subtitle": "Add 1 to 3 hidden details (e.g. lock screen wallpaper, scratch location, bag contents, case sticker). These are strictly private and never shown publicly.",
+    "add_button": "Add Detail",
+    "warning": "Keep at least one detail hidden so you can verify the real owner. Do NOT reveal these secret details in the public description or in uploaded photos.",
+    "detail_num": "Detail #{{num}}",
+    "type_label": "Detail Type",
+    "type_lock_screen": "Lock Screen / Wallpaper",
+    "type_scratch_mark": "Scratch / Physical Mark",
+    "type_bag_contents": "Inner Bag / Wallet Contents",
+    "type_case_sticker": "Sticker / Case Characteristic",
+    "type_serial_partial": "Serial / Model / Identifier",
+    "type_custom": "Custom Private Detail",
+    "label_label": "Detail Prompt / Label",
+    "label_placeholder": "e.g. What is on the lock screen?",
+    "value_label": "Secret Value (The correct answer)",
+    "value_placeholder": "e.g. Photo of a golden retriever puppy"
   }
 }

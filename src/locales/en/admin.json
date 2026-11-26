@@ -5,7 +5,9 @@
     "overview": "Overview",
     "items": "All Items",
     "users": "User Directory",
-    "reports": "Flagged Reports"
+    "reports": "Flagged Reports",
+    "insights": "Insights & Hotspots",
+    "audit_trail": "Audit Trail ({{count}})"
   },
   "stats": {
     "total_users": "Registered Users",
@@ -18,5 +20,17 @@
     "unban_user": "Unban User",
     "delete_item": "Remove Item",
     "dismiss_report": "Dismiss Flag"
+  },
+  "desks": {
+    "title": "Drop-off Desks & Organizations",
+    "verify_button": "Verify Desk",
+    "revoke_button": "Revoke Verification",
+    "status_verified": "Verified Desk",
+    "status_pending": "Pending Verification"
+  },
+  "audit": {
+    "title": "Immutable Administrative Audit Trail",
+    "subtitle": "Protected by PostgreSQL Row Level Security with append-only policies.",
+    "records_logged": "{{count}} Records Logged"
   }
 }

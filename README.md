@@ -46,6 +46,14 @@ A production-grade, responsive, and privacy-preserving web platform for reportin
    - Moderation queue for reviewing flagged listings with dismiss and administrative removal actions.
    - User account suspension (ban/unban) with reason audit logging.
    - Dual security enforcement: Admin checks enforced in Express middleware and Postgres RLS.
+8. **Hardened Claim & Anti-Fraud Verification System**:
+   - **Hidden Proof Details (Finder Only)**: Finders configure 1 to 3 secret verification proof details (wallpaper, scratches, contents, serials) stored in `item_private_details` protected by strict RLS (accessible ONLY by the finder and admins; never returned in public queries, messages, or notifications).
+   - **3-Step Guided Claim Wizard**: Claimants navigate open verification questions, category-specific prompts, and optional proof document uploads (max 5MB, JPG/PNG/WEBP/PDF) with active PII warnings prohibiting unrelated personal sensitive data.
+   - **Deterministic Verification Match Engine**: Computes explainable match guidance (`High`, `Medium`, `Low`, `Unmatched`) based on hidden token overlap while strictly penalizing public description mirroring (>50% overlap).
+   - **Anti-Fraud Limits & Cooldowns**: 1 active claim per item, max 2 attempts with a mandatory 24-hour cooldown after rejection, platform-wide rejection thresholds (max 3/day, 10/week) triggering automatic temporary locks (`user_claim_locks`), and high-value category restrictions on fresh accounts (<24h). Approving a claim places competing claims on hold.
+   - **Mutual Safe Handover**: Handover status reaches `returned` only when BOTH finder and claimant mutually confirm (`finder_confirmed_handover` and `claimant_confirmed_handover`), with a one-click dispute freeze option alerting moderators.
+   - **Rule-Based Fraud Engine & Immutable Audit Log**: Automated detection of rapid claims/reports, copy-pasting, description mirroring, and opportunistic reports, with admin actions (Warn, Lock, Suspend, Dismiss) logged into immutable `admin_audit_logs`.
+   - **Data Retention**: 90-day retention anonymization routine (`cleanup_expired_claims()`) that strips sensitive proof files and answers from resolved records.
 
 ---
 
@@ -101,7 +109,16 @@ FRONTEND_URL=http://localhost:5173
 Go to your Supabase project's **SQL Editor** and run the files in the following order:
 1. `supabase/migrations/001_init.sql`: Core schema, enums, tables, RLS policies, storage bucket, triggers, and category seed.
 2. `supabase/migrations/002_campus_places.sql`: Campus places and building landmarks schema and seeds.
-3. `supabase/seed.sql` (Optional Demo Data): Creates test users in `auth.users`, profiles, sample items, realistic matches, and claims.
+3. `supabase/migrations/003_more_categories.sql`: Additional category taxonomy.
+4. `supabase/migrations/004_registered_items.sql`: QR item tags and registered items.
+5. `supabase/migrations/005_multilingual_support.sql`: Profiles language preference (en, kn, hi).
+6. `supabase/migrations/006_contact_sharing.sql`: Mutual contact exchange permissions.
+7. `supabase/migrations/007_hotspots_and_analytics.sql`: Privacy-preserving cluster analytics.
+8. `supabase/migrations/008_organizations_desks.sql`: Verified drop-off desks and organization management.
+9. `supabase/migrations/009_fraud_flags.sql`: Duplicate and fraud moderation flags.
+10. `supabase/migrations/010_item_reviews.sql`: Community thank-you reviews.
+11. `supabase/migrations/011_claim_verification_hardening.sql`: Hardened claim verification system (item private details with RLS, proof files, match scoring, mutual safe handover, temporary claim locks, immutable admin audit logs, and 90-day retention cleanup).
+12. `supabase/seed.sql` (Optional Demo Data): Creates test users in `auth.users`, profiles, sample items, realistic matches, and claims.
 
 > [!CAUTION]
 > **DEMO ONLY — NEVER RUN SEED AGAINST PRODUCTION**  

@@ -36,6 +36,7 @@ const AdminPage = lazy(() => import('@/pages/admin/Admin').then(m => ({ default:
 const CampusPage = lazy(() => import('@/pages/campus/Campus').then(m => ({ default: m.CampusPage })));
 const MyItemsPage = lazy(() => import('@/pages/items/MyItems').then(m => ({ default: m.MyItemsPage })));
 const PublicTagPage = lazy(() => import('@/pages/items/PublicTag').then(m => ({ default: m.PublicTagPage })));
+const InsightsPage = lazy(() => import('@/pages/info/Insights').then(m => ({ default: m.InsightsPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,7 @@ export const App: React.FC = () => {
                       <Route path="/terms" element={<TermsPage />} />
                       <Route path="/contact" element={<ContactPage />} />
                       <Route path="/help" element={<HelpPage />} />
+                      <Route path="/insights" element={<InsightsPage />} />
 
                       {/* Browse & Items */}
                       <Route path="/browse" element={<BrowsePage />} />

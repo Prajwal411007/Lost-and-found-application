@@ -9,10 +9,12 @@ import { PublicTagPage } from '../pages/items/PublicTag';
 import { MyItemsPage } from '../pages/items/MyItems';
 
 // Mock Auth Context
+const mockUser = { id: 'user-owner-123', email: 'owner@example.com' };
+const mockProfile = { full_name: 'Test Owner' };
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 'user-owner-123', email: 'owner@example.com' },
-    profile: { full_name: 'Test Owner' },
+    user: mockUser,
+    profile: mockProfile,
     isAuthenticated: true,
     isAdmin: false,
     isConfigured: true,
@@ -159,8 +161,10 @@ describe('Feature 1: QR Item Tags & Privacy Boundary', () => {
       expect(await screen.findByText('My Registered Items & QR Tags')).toBeInTheDocument();
 
       // Verify item card
-      expect(screen.getByText('MacBook Pro 14')).toBeInTheDocument();
-      expect(screen.getByText('TAG-MACKBOOK')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('MacBook Pro 14')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/TAG-MACKBOOK/i)).toBeInTheDocument();
 
       // Verify sticker and mark lost buttons
       expect(screen.getByRole('button', { name: /Print Sticker/i })).toBeInTheDocument();

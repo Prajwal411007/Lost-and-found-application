@@ -7,7 +7,11 @@
     "pending": "Pending Review",
     "approved": "Approved",
     "rejected": "Rejected",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "on_hold": "On Hold",
+    "handover_pending": "Handover Pending",
+    "disputed": "Disputed",
+    "resolved": "Resolved"
   },
   "labels": {
     "claimant_answer": "Verification Answer Provided:",
@@ -19,7 +23,13 @@
     "approve": "Approve Claim",
     "reject": "Reject Claim",
     "cancel": "Cancel Claim",
-    "view_item": "View Item"
+    "view_item": "View Item",
+    "retry_claim": "Submit Second Verification Attempt",
+    "claim_button": "I Think This Is Mine (Submit Claim)",
+    "submit_claim": "Send Verification Claim",
+    "decline_claim": "Decline Claim (Neutral)",
+    "report_suspicious": "Report Suspicious",
+    "approve_ownership": "Approve Ownership"
   },
   "dialog": {
     "approve_title": "Approve this ownership claim?",
@@ -28,5 +38,89 @@
     "reject_description": "Rejecting will dismiss this claim and allow other users to verify.",
     "confirm_approve": "Yes, Approve",
     "confirm_reject": "Yes, Reject"
+  },
+  "tracker": {
+    "title": "Your Ownership Claim",
+    "under_review_note": "Submitted {{date}}. The finder is privately reviewing your answers.",
+    "on_hold_note": "Another claimant is currently coordinating handover. If not completed, your claim will be reviewed.",
+    "rejected_neutral": "We could not conclusively verify your claim on this item. Attempt {{current}} of 2.",
+    "cooldown_note": "You may submit one final attempt after a 24-hour wait period."
+  },
+  "handover": {
+    "title": "Safe Handover Coordination",
+    "instructions": "For safety, meet inside a busy public place or verified campus desk. Both parties must confirm handover to complete.",
+    "finder_label": "Finder Handover",
+    "claimant_label": "Claimant Handover",
+    "confirmed": "Confirmed",
+    "pending_confirmation": "Pending",
+    "confirm_button": "Confirm Handover",
+    "you_confirmed": "You Confirmed",
+    "report_problem": "Report Issue",
+    "confirm_success": "Handover confirmed!"
+  },
+  "dispute": {
+    "modal_title": "Report Handover Problem / Dispute",
+    "modal_desc": "Opening a dispute will freeze the item status and alert platform administrators to review the case.",
+    "reason_label": "Reason for Dispute *",
+    "reason_placeholder": "Describe what went wrong (e.g. Claimant did not show up, incorrect item, extortion demand)...",
+    "submit_btn": "Submit Dispute",
+    "submitted_toast": "Dispute submitted. Moderation notified."
+  },
+  "modal": {
+    "title": "Submit Ownership Verification",
+    "step_indicator": "Step {{current}} of 3",
+    "submitted_title": "Claim Submitted Successfully",
+    "submitted_desc": "Your verification answers are encrypted and shared privately with the finder. You will receive a notification when reviewed.",
+    "private_notice": "Answer as specifically as possible. The finder keeps certain details hidden to verify the real owner.",
+    "next_proof": "Next: Attach Proof",
+    "next_review": "Next: Review & Submit"
+  },
+  "questions": {
+    "marks_label": "Describe any distinguishing marks, scratches, stickers, or damage:",
+    "marks_placeholder": "e.g. Small scratch on the top-left corner, dinosaur sticker",
+    "contents_label": "What was inside, attached to, or stored with the item?",
+    "contents_placeholder": "e.g. Blue lanyard, transit pass, keychain charm",
+    "date_place_label": "When and where approximately did you lose it?",
+    "date_place_placeholder": "e.g. Tuesday around 4 PM near the Library 2nd floor",
+    "category_detail_label": "Category-specific detail (lock screen, serial, card bank):",
+    "category_detail_placeholder": "e.g. Lock screen shows mountain sunset; Bank name on debit card"
+  },
+  "proof": {
+    "title": "Attach Proof of Ownership (Optional)",
+    "subtitle": "Receipt, purchase invoice, box serial number, Find My Device screenshot, or photo of yourself with the item.",
+    "privacy_warning": "Important: Hide or blur unrelated personal information (such as credit card numbers, CVV, or other identity numbers) before uploading.",
+    "upload_prompt": "Click or drag proof file here"
+  },
+  "review": {
+    "title": "Summary & Additional Details",
+    "subtitle": "Provide a comprehensive overview of your ownership details.",
+    "overall_proof_label": "Comprehensive Proof Description *",
+    "overall_proof_placeholder": "Describe secret marks, stickers, wallpaper, contents inside, or purchase date in detail...",
+    "redaction_warning": "This looks like a private number. We will hide it."
+  },
+  "suspicious": {
+    "prompt": "Describe why this claim appears suspicious:",
+    "success_toast": "Claim reported as suspicious and flagged for moderation review."
+  },
+  "dashboard": {
+    "received_title": "Claims Received (For Items You Found)",
+    "no_received": "No claims currently pending review on your found items.",
+    "submitted_title": "Claims Submitted by You",
+    "no_submitted": "You haven't submitted any ownership claims yet.",
+    "review_answers_btn": "Review Verification Answers"
+  },
+  "review_modal": {
+    "title": "Review Ownership Claim & Verification"
+  },
+  "match": {
+    "indicator_title": "Verification Match Engine",
+    "high": "High Match",
+    "medium": "Medium Match",
+    "low": "Low Match",
+    "guidance_note": "Guidance only; please review manually. Scoring evaluates detail overlap with hidden secrets and discounts public description mirroring."
+  },
+  "form": {
+    "max_file_size_error": "Proof file size must be less than 5MB.",
+    "invalid_file_type": "Please upload a valid JPG, PNG, WEBP, or PDF file."
   }
 }

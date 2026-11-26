@@ -21,7 +21,12 @@ import {
   Eye,
   SlidersHorizontal,
   Edit,
+  Printer,
+  X,
+  Lock,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { generateLostItemPosterPdf } from '@/lib/posterGenerator';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Item, Match, Claim, AppNotification, NotificationPreferences } from '@/types';
@@ -49,9 +54,38 @@ export const DashboardPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [selectedClaimForReview, setSelectedClaimForReview] = useState<Claim | null>(null);
+  const [privateDetailsForSelectedClaim, setPrivateDetailsForSelectedClaim] = useState<any[]>([]);
   const [reviewAction, setReviewAction] = useState<'approved' | 'rejected' | null>(null);
   const [finderNotes, setFinderNotes] = useState('');
   const [isProcessingClaim, setIsProcessingClaim] = useState(false);
+  const [generatingPosterId, setGeneratingPosterId] = useState<string | null>(null);
+  const { t } = useTranslation(['item', 'claims', 'dashboard', 'common']);
+
+  const handleDownloadPoster = async (item: Item) => {
+    setGeneratingPosterId(item.id);
+    try {
+      await generateLostItemPosterPdf(item, {
+        origin: window.location.origin,
+        labels: {
+          lost_header: t('item:poster.lost_header'),
+          sub_header: t('item:poster.sub_header'),
+          reward_badge: t('item:poster.reward_badge'),
+          scan_qr_prompt: t('item:poster.scan_qr_prompt'),
+          safe_contact_note: t('item:poster.safe_contact_note'),
+          date_lost: t('item:poster.date_lost'),
+          general_area: t('item:poster.general_area'),
+          category: t('item:poster.category'),
+          description: t('item:poster.description'),
+          footer_tagline: t('item:poster.footer_tagline'),
+        },
+      });
+    } catch (err) {
+      console.error('Failed to generate poster:', err);
+      alert('Failed to generate poster. Please try again.');
+    } finally {
+      setGeneratingPosterId(null);
+    }
+  };
 
   const setTab = (tab: string) => {
     const next = new URLSearchParams(searchParams);
@@ -98,24 +132,21 @@ export const DashboardPage: React.FC = () => {
           setMatches(filtered as Match[]);
         }
 
-        // 3. Fetch claims
-        const { data: subClaims } = await supabase
-          .from('claims')
-          .select('*, item:items(*, category:categories(*))')
-          .eq('claimant_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (subClaims) setSubmittedClaims(subClaims as Claim[]);
-
-        const itemIds = (userItems || []).map((i) => i.id);
-        if (itemIds.length > 0) {
-          const { data: recClaims } = await supabase
-            .from('claims')
-            .select('*, claimant:profiles(id, full_name, avatar_url), item:items(*, category:categories(*))')
-            .in('item_id', itemIds)
-            .order('created_at', { ascending: false });
-
-          if (recClaims) setReceivedClaims(recClaims as Claim[]);
+        // 3. Fetch claims via secured backend API
+        const session = (await supabase.auth.getSession()).data.session;
+        if (session) {
+          try {
+            const claimsRes = await fetch('/api/claims', {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (claimsRes.ok) {
+              const claimsData = await claimsRes.json();
+              setSubmittedClaims(claimsData.submittedClaims || []);
+              setReceivedClaims(claimsData.receivedClaims || []);
+            }
+          } catch (cErr) {
+            console.warn('Backend claims fetch notice:', cErr);
+          }
         }
 
         // 4. Fetch saved listings
@@ -189,31 +220,53 @@ export const DashboardPage: React.FC = () => {
     setMatches((prev) => prev.filter((m) => m.id !== matchId));
   };
 
-  const handleProcessClaim = async () => {
-    if (!selectedClaimForReview || !reviewAction) return;
+  const handleOpenClaimReview = async (claim: Claim) => {
+    setSelectedClaimForReview(claim);
+    setFinderNotes('');
+    setPrivateDetailsForSelectedClaim([]);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch(`/api/items/${claim.item_id}/private-details`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrivateDetailsForSelectedClaim(data.privateDetails || []);
+      }
+    } catch (err) {
+      console.warn('Notice loading private details:', err);
+    }
+  };
+
+  const handleProcessClaim = async (overrideAction?: 'approved' | 'rejected') => {
+    const actionToTake = overrideAction || reviewAction;
+    if (!selectedClaimForReview || !actionToTake) return;
     setIsProcessingClaim(true);
 
     try {
+      const session = (await supabase.auth.getSession()).data.session;
       const response = await fetch(`/api/claims/${selectedClaimForReview.id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
-          status: reviewAction,
+          status: actionToTake,
           finder_notes: finderNotes,
         }),
       });
 
       if (response.ok) {
-        setReceivedClaims((prev) =>
-          prev.map((c) =>
-            c.id === selectedClaimForReview.id
-              ? { ...c, status: reviewAction, finder_notes: finderNotes }
-              : c
-          )
-        );
+        // Reload claims to get fresh statuses (including other claims moved to on_hold)
+        const claimsRes = await fetch('/api/claims', {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (claimsRes.ok) {
+          const cd = await claimsRes.json();
+          setReceivedClaims(cd.receivedClaims || []);
+          setSubmittedClaims(cd.submittedClaims || []);
+        }
         setSelectedClaimForReview(null);
         setReviewAction(null);
         setFinderNotes('');
@@ -225,6 +278,66 @@ export const DashboardPage: React.FC = () => {
       console.error('Error updating claim:', err);
     } finally {
       setIsProcessingClaim(false);
+    }
+  };
+
+  const handleReportSuspicious = async () => {
+    if (!selectedClaimForReview) return;
+    const reason = prompt(t('claims:suspicious.prompt', 'Describe why this claim appears suspicious:'));
+    if (!reason || !reason.trim()) return;
+
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch(`/api/claims/${selectedClaimForReview.id}/report-suspicious`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to report claim');
+      alert(t('claims:suspicious.success_toast', 'Claim reported as suspicious and flagged for moderation review.'));
+      setSelectedClaimForReview(null);
+      // Reload claims
+      const claimsRes = await fetch('/api/claims', {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (claimsRes.ok) {
+        const cd = await claimsRes.json();
+        setReceivedClaims(cd.receivedClaims || []);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to report claim');
+    }
+  };
+
+  const handleDashboardHandoverConfirm = async (claimId: string) => {
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch(`/api/claims/${claimId}/handover-confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ location_type: 'public_place' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to confirm handover');
+      alert(data.message || 'Handover confirmed!');
+      // Reload claims
+      const claimsRes = await fetch('/api/claims', {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (claimsRes.ok) {
+        const cd = await claimsRes.json();
+        setReceivedClaims(cd.receivedClaims || []);
+        setSubmittedClaims(cd.submittedClaims || []);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to confirm handover');
     }
   };
 
@@ -393,6 +506,14 @@ export const DashboardPage: React.FC = () => {
                           <Eye className="w-3.5 h-3.5 mr-1" /> View Listing
                         </Link>
                         <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => handleDownloadPoster(item)}
+                            disabled={generatingPosterId === item.id}
+                            className="p-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-700/50 rounded-lg disabled:opacity-50"
+                            title={t('item:poster.download_poster')}
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
                           <Link
                             to={`/items/${item.id}/edit`}
                             className="p-1.5 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-700/50 rounded-lg"
@@ -611,50 +732,93 @@ export const DashboardPage: React.FC = () => {
               {/* Claims Received on My Found Items */}
               <div className="space-y-3">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Claims Received (For Items You Found)
+                  {t('claims:dashboard.received_title', 'Claims Received (For Items You Found)')}
                 </h3>
                 {receivedClaims.length === 0 ? (
                   <p className="text-xs text-slate-500 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                    No claims currently pending review on your found items.
+                    {t('claims:dashboard.no_received', 'No claims currently pending review on your found items.')}
                   </p>
                 ) : (
                   <div className="space-y-3">
                     {receivedClaims.map((claim) => (
                       <div
                         key={claim.id}
-                        className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                        className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3"
                       >
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span
-                              className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
-                                claim.status === 'approved'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : claim.status === 'rejected'
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {claim.status}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-900 dark:text-white">
-                              Claim for: {claim.item?.title}
-                            </span>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <span
+                                className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+                                  claim.status === 'approved' || claim.status === 'handover_pending'
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                                    : claim.status === 'rejected'
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
+                                    : claim.status === 'on_hold'
+                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200'
+                                    : claim.status === 'disputed'
+                                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                                }`}
+                              >
+                                {claim.status}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                                {claim.item?.title}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 flex items-center gap-2">
+                              <span>Claimant: <strong>{claim.claimant?.full_name || 'Anonymous User'}</strong></span>
+                              {claim.claimant_aggregate && (
+                                <span className="text-[11px] text-slate-400">
+                                  ({claim.claimant_aggregate.account_age_days}d account • {claim.claimant_aggregate.successful_returns} returns)
+                                </span>
+                              )}
+                              <span>• Submitted {formatRelativeTime(claim.created_at)}</span>
+                            </p>
                           </div>
-                          <p className="text-xs text-slate-500">
-                            Claimant: {claim.claimant?.full_name || 'Anonymous User'} • Submitted{' '}
-                            {formatRelativeTime(claim.created_at)}
-                          </p>
+
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleOpenClaimReview(claim)}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-2xs"
+                            >
+                              {t('claims:dashboard.review_answers_btn', 'Review Verification Answers')}
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => setSelectedClaimForReview(claim)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
-                          >
-                            Review Verification Answers
-                          </button>
-                        </div>
+                        {/* Handover Status Box for Approved Claims */}
+                        {(claim.status === 'approved' || claim.status === 'handover_pending') && (
+                          <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                {t('claims:handover.title', 'Safe Handover in Progress')}
+                              </span>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                                Finder: {claim.finder_confirmed_handover ? 'Confirmed' : 'Awaiting confirmation'} • Claimant: {claim.claimant_confirmed_handover ? 'Confirmed' : 'Awaiting confirmation'}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {!claim.finder_confirmed_handover && (
+                                <button
+                                  onClick={() => handleDashboardHandoverConfirm(claim.id)}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                                >
+                                  {t('claims:handover.confirm_button', 'Confirm Handover')}
+                                </button>
+                              )}
+                              <Link
+                                to={`/items/${claim.item_id}`}
+                                className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-white"
+                              >
+                                View Item
+                              </Link>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -664,46 +828,83 @@ export const DashboardPage: React.FC = () => {
               {/* Claims Submitted by Me */}
               <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Claims Submitted by You
+                  {t('claims:dashboard.submitted_title', 'Claims Submitted by You')}
                 </h3>
                 {submittedClaims.length === 0 ? (
                   <p className="text-xs text-slate-500 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                    You haven't submitted any ownership claims yet.
+                    {t('claims:dashboard.no_submitted', "You haven't submitted any ownership claims yet.")}
                   </p>
                 ) : (
                   <div className="space-y-3">
                     {submittedClaims.map((claim) => (
                       <div
                         key={claim.id}
-                        className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between"
+                        className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3"
                       >
-                        <div>
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
-                              claim.status === 'approved'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : claim.status === 'rejected'
-                                ? 'bg-rose-100 text-rose-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {claim.status}
-                          </span>
-                          <h4 className="font-semibold text-sm text-slate-900 dark:text-white mt-1">
-                            {claim.item?.title}
-                          </h4>
-                          <p className="text-xs text-slate-400">Submitted {formatDate(claim.created_at)}</p>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span
+                              className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+                                claim.status === 'approved' || claim.status === 'handover_pending'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : claim.status === 'rejected'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : claim.status === 'on_hold'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : claim.status === 'disputed'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {claim.status}
+                            </span>
+                            <h4 className="font-semibold text-sm text-slate-900 dark:text-white mt-1">
+                              {claim.item?.title}
+                            </h4>
+                            <p className="text-xs text-slate-400">Submitted {formatDate(claim.created_at)}</p>
+                          </div>
+
+                          {(claim.status === 'approved' || claim.status === 'handover_pending') && (
+                            <div className="text-right">
+                              <span className="text-xs font-bold text-emerald-600 block">Claim Approved!</span>
+                              <Link
+                                to="/messages"
+                                className="text-xs text-blue-600 underline font-semibold"
+                              >
+                                Open Safe Chat
+                              </Link>
+                            </div>
+                          )}
                         </div>
 
-                        {claim.status === 'approved' && (
-                          <div className="text-right">
-                            <span className="text-xs font-bold text-emerald-600 block">Claim Approved!</span>
-                            <Link
-                              to="/messages"
-                              className="text-xs text-blue-600 underline font-semibold"
-                            >
-                              Open Safe Chat
-                            </Link>
+                        {/* Handover Status Box for Claimant */}
+                        {(claim.status === 'approved' || claim.status === 'handover_pending') && (
+                          <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                                {t('claims:handover.title', 'Safe Handover Coordination')}
+                              </span>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                                You: {claim.claimant_confirmed_handover ? 'Confirmed' : 'Awaiting confirmation'} • Finder: {claim.finder_confirmed_handover ? 'Confirmed' : 'Awaiting confirmation'}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {!claim.claimant_confirmed_handover && (
+                                <button
+                                  onClick={() => handleDashboardHandoverConfirm(claim.id)}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                                >
+                                  {t('claims:handover.confirm_button', 'Confirm Handover')}
+                                </button>
+                              )}
+                              <Link
+                                to={`/items/${claim.item_id}`}
+                                className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-white"
+                              >
+                                View Item
+                              </Link>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -839,28 +1040,159 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Claim Review Modal */}
+      {/* Side-by-Side Claim Review Modal */}
       {selectedClaimForReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
-            <h3 className="font-bold text-lg text-slate-900 dark:text-white">
-              Review Private Ownership Claim
-            </h3>
-            <p className="text-xs text-slate-500">
-              Claim for: <strong>{selectedClaimForReview.item?.title}</strong>
-            </p>
+          <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900 dark:text-white">
+                  {t('claims:review_modal.title', 'Review Ownership Claim & Verification')}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Item: <strong>{selectedClaimForReview.item?.title}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedClaimForReview(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl space-y-2 text-xs">
-              <span className="font-bold text-slate-700 dark:text-slate-300 block">
-                Claimant's Proof Description:
-              </span>
-              <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-                {selectedClaimForReview.verification_answers?.proof_description || 'No description provided'}
+            {/* Claimant Identity & Reputation Badge */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-600 to-blue-600 text-white font-bold flex items-center justify-center text-sm uppercase">
+                  {selectedClaimForReview.claimant?.full_name ? selectedClaimForReview.claimant.full_name[0] : 'C'}
+                </div>
+                <div>
+                  <span className="font-bold text-slate-900 dark:text-white block">
+                    {selectedClaimForReview.claimant?.full_name || 'Community Member'}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Submitted {formatRelativeTime(selectedClaimForReview.created_at)}
+                  </span>
+                </div>
+              </div>
+
+              {selectedClaimForReview.claimant_aggregate && (
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                    Account: <strong>{selectedClaimForReview.claimant_aggregate.account_age_days}d old</strong>
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-medium">
+                    Returns: <strong>{selectedClaimForReview.claimant_aggregate.successful_returns}</strong>
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Verification Match Engine Indicator */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {t('claims:match.indicator_title', 'Verification Match Engine')}
+                </span>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                    selectedClaimForReview.match_score === 'high' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 70)
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                      : selectedClaimForReview.match_score === 'medium' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 40)
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                  }`}
+                >
+                  {selectedClaimForReview.match_score === 'high' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 70)
+                    ? t('claims:match.high', 'High Match')
+                    : selectedClaimForReview.match_score === 'medium' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 40)
+                    ? t('claims:match.medium', 'Medium Match')
+                    : t('claims:match.low', 'Low Match')}
+                  {typeof selectedClaimForReview.match_score === 'number' ? ` (${selectedClaimForReview.match_score}%)` : ''}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                {selectedClaimForReview.match_explanation || 'No deterministic overlap found.'}
+              </p>
+
+              <p className="text-[10px] text-slate-400 italic">
+                {t('claims:match.guidance_note', 'Guidance only; please review manually. Scoring evaluates detail overlap with hidden secrets and discounts public description mirroring.')}
               </p>
             </div>
 
-            {/* Decision Buttons */}
-            <div className="space-y-3 pt-2">
+            {/* Side-by-Side Comparison Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {/* Claimant's Answers */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-3">
+                <span className="font-bold text-slate-900 dark:text-white block text-xs uppercase tracking-wider border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                  Claimant's Submitted Details
+                </span>
+
+                {selectedClaimForReview.verification_answers?.answers &&
+                  Object.entries(selectedClaimForReview.verification_answers.answers).map(([key, val]) => (
+                    <div key={key}>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">{key.replace('_', ' ')}</span>
+                      <p className="text-slate-800 dark:text-slate-200 font-medium">{String(val) || '—'}</p>
+                    </div>
+                  ))}
+
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Comprehensive Proof</span>
+                  <p className="text-slate-800 dark:text-slate-200 font-medium whitespace-pre-wrap">
+                    {selectedClaimForReview.verification_answers?.proof_description || 'No description provided'}
+                  </p>
+                </div>
+
+                {/* Proof Files Preview */}
+                {selectedClaimForReview.proof_files && selectedClaimForReview.proof_files.length > 0 && (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Proof Files</span>
+                    {selectedClaimForReview.proof_files.map((file, fIdx) => (
+                      <a
+                        key={fIdx}
+                        href={file.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:underline text-[11px] block truncate"
+                      >
+                        <ExternalLink className="w-3 h-3 shrink-0" />
+                        {file.name}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Finder's Hidden Proof Details */}
+              <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 space-y-3">
+                <span className="font-bold text-indigo-950 dark:text-indigo-200 block text-xs uppercase tracking-wider border-b border-indigo-200 dark:border-indigo-800 pb-1.5 flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5 text-indigo-500" />
+                  Your Hidden Proof Details
+                </span>
+
+                {privateDetailsForSelectedClaim.length === 0 ? (
+                  <p className="text-slate-400 text-xs italic">
+                    No secret proof details were registered on this item.
+                  </p>
+                ) : (
+                  privateDetailsForSelectedClaim.map((pd, pIdx) => (
+                    <div key={pIdx} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-800">
+                      <span className="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-400 block">
+                        {pd.detail_label || pd.detail_type}
+                      </span>
+                      <p className="text-slate-900 dark:text-white font-semibold mt-0.5">
+                        {pd.detail_value}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Decision Notes & Action Buttons */}
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-700">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Decision Notes (Optional message to claimant)
               </label>
@@ -869,41 +1201,35 @@ export const DashboardPage: React.FC = () => {
                 value={finderNotes}
                 onChange={(e) => setFinderNotes(e.target.value)}
                 placeholder="e.g. Please meet at the Campus Union lobby tomorrow at 2 PM..."
-                className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
               />
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   disabled={isProcessingClaim}
-                  onClick={() => {
-                    setReviewAction('rejected');
-                    handleProcessClaim();
-                  }}
-                  className="flex-1 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200"
+                  onClick={() => handleProcessClaim('rejected')}
+                  className="flex-1 py-2.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-800 transition cursor-pointer"
                 >
-                  Decline Claim
+                  {t('claims:actions.decline_claim', 'Decline Claim (Neutral)')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReportSuspicious}
+                  className="py-2.5 px-3 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300 rounded-xl border border-amber-200 dark:border-amber-800 transition cursor-pointer"
+                >
+                  {t('claims:actions.report_suspicious', 'Report Suspicious')}
                 </button>
                 <button
                   type="button"
                   disabled={isProcessingClaim}
-                  onClick={() => {
-                    setReviewAction('approved');
-                    handleProcessClaim();
-                  }}
-                  className="flex-1 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm"
+                  onClick={() => handleProcessClaim('approved')}
+                  className="flex-1 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition cursor-pointer"
                 >
-                  Approve Ownership
+                  {t('claims:actions.approve_ownership', 'Approve Ownership')}
                 </button>
               </div>
             </div>
-
-            <button
-              onClick={() => setSelectedClaimForReview(null)}
-              className="w-full text-center text-xs text-slate-400 hover:text-slate-600 pt-2"
-            >
-              Close
-            </button>
           </div>
         </div>
       )}

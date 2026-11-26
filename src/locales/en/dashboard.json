@@ -27,5 +27,12 @@
     "no_reports": "You haven't reported any lost or found items yet.",
     "no_claims": "You have no active claims.",
     "report_button": "Report an Item Now"
+  },
+  "feedback": {
+    "title": "Community Trust & Thank-You Feedback",
+    "subtitle": "Reviews received from fellow community members after successful reunions",
+    "average_rating": "Average Rating",
+    "total_reviews": "Total Reviews",
+    "no_reviews": "No thank-you notes received yet. When items are reunited, notes will appear here."
   }
 }

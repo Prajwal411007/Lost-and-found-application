@@ -13,7 +13,11 @@ import {
   Clock,
   ArrowLeft,
   Loader2,
+  Lock,
+  Unlock,
+  AlertTriangle,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Conversation, Message } from '@/types';
@@ -21,8 +25,10 @@ import { formatRelativeTime } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
+import { hasSensitiveData } from '@/lib/redaction';
 
 export const MessagesPage: React.FC = () => {
+  const { t } = useTranslation(['messages', 'common']);
   const { user, isConfigured } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeConvId = searchParams.get('conversation');
@@ -149,6 +155,31 @@ export const MessagesPage: React.FC = () => {
 
   const activeConversation = conversations.find((c) => c.id === activeConvId);
 
+  const isPartOne = activeConversation?.participant_one === user?.id;
+  const myAgreed = isPartOne
+    ? (activeConversation as any)?.share_contact_participant_one
+    : (activeConversation as any)?.share_contact_participant_two;
+  const bothAgreed =
+    Boolean((activeConversation as any)?.share_contact_participant_one) &&
+    Boolean((activeConversation as any)?.share_contact_participant_two);
+
+  const handleShareContact = async () => {
+    if (!activeConvId || !supabase) return;
+    try {
+      const response = await fetch(`/api/messages/${activeConvId}/share-contact`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      });
+      if (response.ok) {
+        await fetchConversations();
+      }
+    } catch (err) {
+      console.error('Error enabling contact sharing:', err);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col md:flex-row h-[78vh]">
@@ -256,7 +287,30 @@ export const MessagesPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="relative">
+                <div className="flex items-center space-x-2">
+                  {bothAgreed ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <Unlock className="w-3 h-3" />
+                      <span className="hidden sm:inline">{t('messages:share_contact_active')}</span>
+                    </span>
+                  ) : myAgreed ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      <Clock className="w-3 h-3" />
+                      <span className="hidden sm:inline">{t('messages:share_contact_requested')}</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleShareContact}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                      title={t('messages:contact_masked_notice')}
+                    >
+                      <Lock className="w-3 h-3 text-slate-500" />
+                      <span>{t('messages:share_contact')}</span>
+                    </button>
+                  )}
+
+                  <div className="relative">
                   <button
                     onClick={() => setIsMenuOpen(!isMenuOpen)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
@@ -277,6 +331,7 @@ export const MessagesPage: React.FC = () => {
                       </button>
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
 
@@ -315,6 +370,14 @@ export const MessagesPage: React.FC = () => {
                 )}
                 <div ref={messagesEndRef} />
               </div>
+
+              {/* Live Warning for Private Numbers / Contacts */}
+              {!bothAgreed && hasSensitiveData(newMessageText) && (
+                <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/50 border-t border-amber-200 dark:border-amber-900 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{t('common:actions.sensitive_data_warning', 'This looks like a private number. We will hide it.')}</span>
+                </div>
+              )}
 
               {/* Message Input Bar */}
               <form

@@ -19,7 +19,8 @@
     "messages": "Messages",
     "theme_light": "Light Mode",
     "theme_dark": "Dark Mode",
-    "language": "Language"
+    "language": "Language",
+    "insights": "Insights"
   },
   "actions": {
     "search": "Search",
@@ -43,7 +44,8 @@
     "apply": "Apply",
     "loading": "Loading...",
     "print": "Print",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "sensitive_data_warning": "This looks like a private number. We will hide it."
   },
   "status": {
     "open": "Open",
@@ -95,5 +97,26 @@
     "error_denied": "Location access was denied. You can still browse items manually by search or category.",
     "error_unavailable": "Location information is currently unavailable from your device.",
     "error_timeout": "Location request timed out. Please try again."
+  },
+  "insights": {
+    "title": "Platform Insights & Recovery Analytics",
+    "subtitle": "Transparent, privacy-preserving metrics on community item reunions, activity hotspots, and recovery rates",
+    "kpi_total_reported": "Total Reports Logged",
+    "kpi_items_returned": "Successfully Reunited",
+    "kpi_return_rate": "Overall Recovery Rate",
+    "kpi_avg_time": "Average Time to Reunion",
+    "hotspots_title": "Community Activity Hotspots",
+    "hotspots_subtitle": "Aggregated into ~1.1 km clusters to strictly preserve resident and student privacy",
+    "hotspots_notice": "Exact coordinates are never displayed. Each circle represents cluster density.",
+    "categories_title": "Category Recovery Performance",
+    "categories_subtitle": "Reunion success rate and volume across major categories",
+    "weekly_trends_title": "Weekly Activity & Resolution Trends",
+    "weekly_trends_subtitle": "Reports logged and closed over past weeks",
+    "legend_lost": "Lost Reports",
+    "legend_found": "Found Reports",
+    "legend_reunited": "Reunited Items",
+    "no_data": "No hotspot records found yet. Reports will appear here as items are logged.",
+    "hours": "hours",
+    "days": "days"
   }
 }

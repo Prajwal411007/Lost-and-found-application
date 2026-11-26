@@ -18,6 +18,25 @@ describe('Express Backend API Integration Tests', () => {
     expect(res.body).toHaveProperty('returnRate');
   });
 
+  it('GET /api/stats/hotspots returns privacy-preserved rounded clusters', async () => {
+    const res = await request(app).get('/api/stats/hotspots');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('hotspots');
+    expect(Array.isArray(res.body.hotspots)).toBe(true);
+  });
+
+  it('GET /api/stats/insights returns summary, categories and weekly trends', async () => {
+    const res = await request(app).get('/api/stats/insights');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('summary');
+    expect(res.body.summary).toHaveProperty('totalReported');
+    expect(res.body.summary).toHaveProperty('returnRatePct');
+    expect(res.body).toHaveProperty('categories');
+    expect(res.body).toHaveProperty('weeklyTrends');
+    expect(Array.isArray(res.body.categories)).toBe(true);
+    expect(Array.isArray(res.body.weeklyTrends)).toBe(true);
+  });
+
   it('POST /api/items rejects unauthenticated requests with 401', async () => {
     const res = await request(app)
       .post('/api/items')

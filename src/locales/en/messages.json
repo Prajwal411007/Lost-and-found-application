@@ -7,5 +7,9 @@
   "send": "Send",
   "safety_disclaimer": "Safety reminder: Never share bank account details, UPI PINs, passwords, or send advance money.",
   "regarding": "Regarding item:",
-  "anonymous_user": "Community Member"
+  "anonymous_user": "Community Member",
+  "share_contact": "Share Contact Info",
+  "share_contact_requested": "You agreed to share contact info. Waiting for other party.",
+  "share_contact_active": "Contact sharing enabled by both users (unmasked)",
+  "contact_masked_notice": "Private numbers & contacts are masked for safety unless both parties enable contact sharing."
 }

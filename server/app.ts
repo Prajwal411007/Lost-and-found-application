@@ -15,6 +15,10 @@ import { campusRouter } from './routes/campus.js';
 import { statsRouter } from './routes/stats.js';
 import { tagsRouter } from './routes/tags.js';
 import { institutionsRouter } from './routes/institutions.js';
+import { organizationsRouter } from './routes/organizations.js';
+import { reviewsRouter } from './routes/reviews.js';
+import { visionRouter } from './routes/vision.js';
+import { metaRouter, handleItemRouteCrawler } from './routes/meta.js';
 import { isServerSupabaseConfigured } from './config/supabase.js';
 
 dotenv.config();
@@ -90,6 +94,13 @@ app.use('/api/campus', campusRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/nearby-institutions', institutionsRouter);
+app.use('/api/organizations', organizationsRouter);
+app.use('/api/reviews', reviewsRouter);
+app.use('/api/vision', visionRouter);
+
+// Open Graph & Social Share Preview Cards
+app.get('/items/:id', handleItemRouteCrawler);
+app.use(metaRouter);
 
 // Centralized Error Handling
 app.use(errorHandler);

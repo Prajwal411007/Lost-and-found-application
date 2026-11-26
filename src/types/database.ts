@@ -8,7 +8,15 @@ export type Json =
 
 export type ItemType = 'lost' | 'found';
 export type ItemStatus = 'open' | 'pending_claim' | 'returned' | 'closed';
-export type ClaimStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type ClaimStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'on_hold'
+  | 'handover_pending'
+  | 'disputed'
+  | 'resolved';
 export type MatchStatus = 'suggested' | 'dismissed' | 'confirmed';
 export type NotificationType =
   | 'match_found'
@@ -18,7 +26,45 @@ export type NotificationType =
   | 'item_returned'
   | 'system';
 export type ReportStatus = 'pending' | 'reviewed' | 'actioned' | 'dismissed';
-export type UserRole = 'user' | 'admin' | 'moderator';
+export type UserRole = 'user' | 'admin' | 'moderator' | 'org_staff';
+export type OrganizationType = 'college' | 'transit' | 'library' | 'police' | 'mall' | 'other';
+
+export interface Organization {
+  id: string;
+  name: string;
+  type: OrganizationType;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  contact_route: string | null;
+  verified: boolean;
+  opening_hours: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: 'org_admin' | 'org_staff';
+  created_at: string;
+}
+
+export interface ItemReview {
+  id: string;
+  item_id: string;
+  reviewer_id: string;
+  reviewee_id: string;
+  rating: number;
+  note: string | null;
+  is_hidden: boolean;
+  created_at: string;
+  updated_at: string;
+  reviewer?: Profile;
+  reviewee?: Profile;
+}
 
 export interface Profile {
   id: string;
@@ -74,12 +120,16 @@ export interface Item {
   attributes: ItemAttributes;
   campus_place_id: string | null;
   campus_building_id: string | null;
+  organization_id?: string | null;
+  held_at_desk?: boolean;
+  desk_pickup_instructions?: string | null;
   view_count: number;
   created_at: string;
   updated_at: string;
   // Joins
   category?: Category;
   user?: Profile;
+  organization?: Organization;
   images?: ItemImage[];
 }
 
@@ -113,6 +163,46 @@ export interface Match {
   found_item?: Item;
 }
 
+export interface ItemPrivateDetail {
+  id: string;
+  item_id: string;
+  detail_type: string;
+  detail_label: string;
+  detail_value: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProofFile {
+  name: string;
+  url: string;
+  file_type: string;
+  size: number;
+  created_at?: string;
+}
+
+export interface UserClaimLock {
+  user_id: string;
+  locked_until: string;
+  reason: string;
+  locked_by?: string | null;
+  created_at: string;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  admin_id: string;
+  action: string;
+  target_user_id?: string | null;
+  target_item_id?: string | null;
+  target_claim_id?: string | null;
+  reason: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+  admin?: Profile;
+  target_user?: Profile;
+}
+
 export interface Claim {
   id: string;
   item_id: string;
@@ -123,6 +213,22 @@ export interface Claim {
     proof_description?: string;
     submitted_at: string;
   };
+  proof_files?: ProofFile[];
+  match_score?: 'high' | 'medium' | 'low' | 'unmatched';
+  match_explanation?: string | null;
+  finder_confirmed_handover?: boolean;
+  claimant_confirmed_handover?: boolean;
+  handover_confirmed_at?: string | null;
+  handover_location_type?: string | null;
+  handover_notes?: string | null;
+  is_disputed?: boolean;
+  dispute_reason?: string | null;
+  disputed_by?: string | null;
+  disputed_at?: string | null;
+  is_suspicious?: boolean;
+  suspicious_reason?: string | null;
+  suspicious_reported_by?: string | null;
+  attempt_number?: number;
   finder_notes: string | null;
   resolved_at: string | null;
   created_at: string;
@@ -130,6 +236,11 @@ export interface Claim {
   // Joins
   item?: Item;
   claimant?: Profile;
+  claimant_aggregate?: {
+    account_age_days: number;
+    successful_returns: number;
+    total_claims: number;
+  };
 }
 
 export interface Conversation {

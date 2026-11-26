@@ -22,7 +22,23 @@
     "share": "Share",
     "share_copied": "Link copied to clipboard!",
     "print_tag": "Print QR Tag",
-    "mark_returned": "Mark as Returned"
+    "mark_returned": "Mark as Returned",
+    "download_poster": "Download Poster"
+  },
+  "poster": {
+    "lost_header": "LOST ITEM",
+    "sub_header": "PLEASE HELP REUNITE THIS ITEM WITH ITS OWNER",
+    "reward_badge": "REWARD OFFERED",
+    "scan_qr_prompt": "Scan to view details & contact safely",
+    "safe_contact_note": "Scan with any smartphone camera to securely view this listing and message the owner. No private phone numbers or personal data are exposed on this poster.",
+    "date_lost": "Date Lost",
+    "general_area": "General Area",
+    "category": "Category",
+    "description": "Description",
+    "reward": "Reward",
+    "footer_tagline": "Lost & Found Community Portal • Safe & Verified Returns",
+    "downloading": "Generating poster...",
+    "download_poster": "Download Lost Poster"
   },
   "claim_modal": {
     "title": "Claim This Item",
@@ -41,5 +57,38 @@
   "similar_items": {
     "title": "Potential Matches",
     "subtitle": "Similar items reported nearby around the same time"
+  },
+  "desk": {
+    "badge": "Verified Custody",
+    "held_at": "Held at:",
+    "hours": "Hours:",
+    "instructions": "Claim & Pickup Instructions:",
+    "turn_in_prompt": "Item Turned in to Official Drop-off Desk",
+    "turn_in_help": "Select an authorized campus desk, transit station, or library holding this item.",
+    "select_desk": "Select Drop-off Desk",
+    "instructions_placeholder": "e.g., Left with Security Officer Sharma at Counter 2. Bring ID to claim."
+  },
+  "review_modal": {
+    "title": "Community Thank-You & Feedback",
+    "subtitle": "Rate your experience and leave a short thank-you note to build community trust.",
+    "rating_label": "Your Rating (1 to 5 Stars)",
+    "note_label": "Thank-You Message (Max 300 characters)",
+    "note_placeholder": "Thank you so much for returning my item quickly and safely!",
+    "submit_button": "Submit Feedback",
+    "submitting": "Submitting...",
+    "success_toast": "Thank-you feedback submitted!",
+    "already_submitted": "Feedback already submitted for this return.",
+    "open_modal_btn": "Leave Thank-You Feedback"
+  },
+  "share": {
+    "button": "Share",
+    "title": "Share Item",
+    "copy_link": "Copy Link",
+    "copied": "Link Copied!",
+    "whatsapp": "Share on WhatsApp",
+    "telegram": "Share on Telegram",
+    "native_share": "More Sharing Options...",
+    "lost_text": "Lost item in {{area}}: \"{{title}}\". Can you help reunite it?",
+    "found_text": "Found item in {{area}}: \"{{title}}\". Help find the owner!"
   }
 }

@@ -19,6 +19,10 @@ import {
   Trash2,
   Navigation,
   Search,
+  ShieldCheck,
+  Sparkles,
+  Lock,
+  Plus,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -29,6 +33,7 @@ import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
 import { reverseGeocode, searchPlaces } from '@/services/geocoding';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
 import { CategorySelect } from '@/components/common/CategorySelect';
+import { hasSensitiveData, redactSensitiveData } from '@/lib/redaction';
 
 const createReportSchema = (t: any) =>
   z.object({
@@ -82,6 +87,62 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showLocationDeniedAlert, setShowLocationDeniedAlert] = useState(false);
+
+  // Drop-off desk custody state
+  const [verifiedDesks, setVerifiedDesks] = useState<any[]>([]);
+  const [heldAtDesk, setHeldAtDesk] = useState(false);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('');
+  const [deskPickupNotes, setDeskPickupNotes] = useState('');
+
+  // Duplicate Warning Modal state
+  const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false);
+  const [detectedDuplicates, setDetectedDuplicates] = useState<any[]>([]);
+  const [pendingFormData, setPendingFormData] = useState<ReportFormData | null>(null);
+
+  // Vision AI Suggestions state
+  const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false);
+  const [visionSuggestions, setVisionSuggestions] = useState<{
+    categoryId?: string | null;
+    categoryName?: string | null;
+    color?: string | null;
+    tags?: string[];
+  } | null>(null);
+
+  // Hidden Proof Details (Finder Only) state
+  const [privateDetails, setPrivateDetails] = useState<
+    Array<{ detail_type: string; detail_label: string; detail_value: string }>
+  >([
+    { detail_type: 'lock_screen', detail_label: 'Lock screen wallpaper / theme', detail_value: '' },
+  ]);
+
+  const handleAddPrivateDetail = () => {
+    if (privateDetails.length >= 3) return;
+    setPrivateDetails((prev) => [
+      ...prev,
+      { detail_type: 'scratch_mark', detail_label: 'Scratch or mark location', detail_value: '' },
+    ]);
+  };
+
+  const handleRemovePrivateDetail = (index: number) => {
+    setPrivateDetails((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleUpdatePrivateDetail = (
+    index: number,
+    field: 'detail_type' | 'detail_label' | 'detail_value',
+    value: string
+  ) => {
+    setPrivateDetails((prev) =>
+      prev.map((d, idx) => (idx === index ? { ...d, [field]: value } : d))
+    );
+  };
+
+  useEffect(() => {
+    fetch('/api/organizations')
+      .then((res) => (res.ok ? res.json() : { organizations: [] }))
+      .then((data) => setVerifiedDesks(data.organizations || []))
+      .catch(() => setVerifiedDesks([]));
+  }, []);
 
   const {
     register,
@@ -288,6 +349,55 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
 
     setImages((prev) => [...prev, ...validFiles]);
     setImagePreviews((prev) => [...prev, ...validPreviews]);
+
+    // Trigger AI photo suggestions on first uploaded valid image
+    if (validFiles.length > 0) {
+      analyzePhoto(validFiles[0]);
+    }
+  };
+
+  const analyzePhoto = async (file: File) => {
+    setIsAnalyzingPhoto(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        try {
+          const res = await fetch('/api/vision/suggest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64 }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.enabled && data.suggestions) {
+              setVisionSuggestions(data.suggestions);
+            }
+          }
+        } catch {
+          // Gracefully skip
+        } finally {
+          setIsAnalyzingPhoto(false);
+        }
+      };
+      reader.onerror = () => setIsAnalyzingPhoto(false);
+      reader.readAsDataURL(file);
+    } catch {
+      setIsAnalyzingPhoto(false);
+    }
+  };
+
+  const handleApplyAllSuggestions = () => {
+    if (!visionSuggestions) return;
+    if (visionSuggestions.categoryId) {
+      setValue('categoryId', visionSuggestions.categoryId);
+    }
+    const currentDesc = watch('description') || '';
+    if (!currentDesc && visionSuggestions.tags && visionSuggestions.tags.length > 0) {
+      const colorPrefix = visionSuggestions.color ? `${visionSuggestions.color} ` : '';
+      const catPrefix = visionSuggestions.categoryName ? `${visionSuggestions.categoryName} ` : '';
+      setValue('description', `${colorPrefix}${catPrefix}(${visionSuggestions.tags.join(', ')})`);
+    }
   };
 
   const removeNewImage = (index: number) => {
@@ -300,7 +410,7 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
     setDeletedImageIds((prev) => [...prev, imageId]);
   };
 
-  const onSubmit = async (data: ReportFormData) => {
+  const executeSubmission = async (data: ReportFormData) => {
     if (!user) {
       navigate('/login', { state: { from: location } });
       return;
@@ -348,8 +458,8 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
 
       const itemPayload = {
         type: data.type,
-        title: data.title,
-        description: data.description,
+        title: redactSensitiveData(data.title.trim()),
+        description: redactSensitiveData(data.description.trim()),
         category_id: data.categoryId,
         date_occurred: data.dateOccurred,
         location_country: data.locationCountry,
@@ -358,6 +468,9 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
         location_landmark: data.locationLandmark || null,
         latitude: selectedCoords ? Math.round(selectedCoords.lat * 1000) / 1000 : null,
         longitude: selectedCoords ? Math.round(selectedCoords.lng * 1000) / 1000 : null,
+        organization_id: heldAtDesk && selectedOrgId ? selectedOrgId : null,
+        held_at_desk: Boolean(heldAtDesk && selectedOrgId),
+        desk_pickup_instructions: heldAtDesk ? deskPickupNotes || null : null,
         primary_image_url: primaryUrl,
         attributes: {
           color: data.color || null,
@@ -429,6 +542,27 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
           await supabase.from('item_images').insert(imageRows);
         }
 
+        // Insert hidden proof details for found items
+        if (createdItem && data.type === 'found') {
+          const validDetails = privateDetails
+            .filter((d) => d.detail_value && d.detail_value.trim().length > 0)
+            .slice(0, 3)
+            .map((d) => ({
+              item_id: createdItem.id,
+              detail_type: d.detail_type,
+              detail_label: d.detail_label || 'Proof Detail',
+              detail_value: redactSensitiveData(d.detail_value.trim()),
+            }));
+
+          if (validDetails.length > 0) {
+            try {
+              await supabase.from('item_private_details').insert(validDetails);
+            } catch (privErr) {
+              console.warn('Private details insert notice:', privErr);
+            }
+          }
+        }
+
         // Trigger backend matching engine via fetch (if backend running)
         try {
           await fetch(`/api/matches/compute/${createdItem.id}`, {
@@ -446,6 +580,43 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
     } finally {
       setIsSubmitting(false);
       setUploadProgress(null);
+    }
+  };
+
+  const onSubmit = async (data: ReportFormData) => {
+    if (!isEditMode && data.title && data.title.length >= 3) {
+      try {
+        const res = await fetch('/api/items/check-duplicates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: data.title,
+            category_id: data.categoryId,
+            type: data.type,
+            latitude: selectedCoords?.lat,
+            longitude: selectedCoords?.lng,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.duplicates && json.duplicates.length > 0) {
+            setDetectedDuplicates(json.duplicates);
+            setPendingFormData(data);
+            setDuplicateWarningOpen(true);
+            return;
+          }
+        }
+      } catch {
+        // Proceed on network failure
+      }
+    }
+    await executeSubmission(data);
+  };
+
+  const handleProceedDuplicate = async () => {
+    setDuplicateWarningOpen(false);
+    if (pendingFormData) {
+      await executeSubmission(pendingFormData);
     }
   };
 
@@ -569,6 +740,12 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
                 placeholder={currentType === 'lost' ? 'e.g., Black Leather Fossil Wallet' : 'e.g., Set of keys with blue car fob'}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500"
               />
+              {hasSensitiveData(watch('title') || '') && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-900" role="alert">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{t('common:actions.sensitive_data_warning', 'This looks like a private number. We will hide it.')}</span>
+                </div>
+              )}
               {errors.title && <p className="mt-1 text-xs text-rose-600">{errors.title.message}</p>}
             </div>
 
@@ -605,6 +782,12 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
                 placeholder="Describe circumstances, approximate surroundings, and generic physical condition..."
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500"
               />
+              {hasSensitiveData(watch('description') || '') && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-900" role="alert">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{t('common:actions.sensitive_data_warning', 'This looks like a private number. We will hide it.')}</span>
+                </div>
+              )}
               {errors.description && <p className="mt-1 text-xs text-rose-600">{errors.description.message}</p>}
             </div>
           </div>
@@ -851,6 +1034,169 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
           </div>
         </div>
 
+        {/* Drop-off Desk Custody Section (Found Items) */}
+        {currentType === 'found' && (
+          <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                  {t('item:desk.turn_in_prompt', 'Item Turned in to Official Drop-off Desk')}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {t('item:desk.turn_in_help', 'Select an authorized campus desk, transit station, or library holding this item.')}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                id="heldAtDeskToggle"
+                checked={heldAtDesk}
+                onChange={(e) => setHeldAtDesk(e.target.checked)}
+                className="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+            </div>
+
+            {heldAtDesk && (
+              <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-700">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    {t('item:desk.select_desk', 'Select Drop-off Desk')}
+                  </label>
+                  <select
+                    value={selectedOrgId}
+                    onChange={(e) => setSelectedOrgId(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">-- {t('item:desk.select_desk', 'Select Drop-off Desk')} --</option>
+                    {verifiedDesks.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.type}) — {d.address}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    {t('item:desk.instructions', 'Claim & Pickup Instructions:')}
+                  </label>
+                  <input
+                    type="text"
+                    value={deskPickupNotes}
+                    onChange={(e) => setDeskPickupNotes(e.target.value)}
+                    placeholder={t('item:desk.instructions_placeholder', 'e.g., Left with Security Officer Sharma at Counter 2. Bring ID to claim.')}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Hidden Proof Details (Found Items - Finder Only) */}
+        {currentType === 'found' && (
+          <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-indigo-500" />
+                  {t('report:private_details.title', 'Hidden Proof Details (Private Verification)')}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {t('report:private_details.subtitle', 'Add 1 to 3 hidden details (e.g. lock screen wallpaper, scratch location, bag contents, case sticker). These are strictly private and never shown publicly.')}
+                </p>
+              </div>
+              {privateDetails.length < 3 && (
+                <button
+                  type="button"
+                  onClick={handleAddPrivateDetail}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {t('report:private_details.add_button', 'Add Detail')}
+                </button>
+              )}
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                {t('report:private_details.warning', 'Keep at least one detail hidden so you can verify the real owner. Do NOT reveal these secret details in the public description or in uploaded photos.')}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {privateDetails.map((detail, idx) => (
+                <div
+                  key={idx}
+                  className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40 space-y-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                      {t('report:private_details.detail_num', 'Detail #{{num}}', { num: idx + 1 })}
+                    </span>
+                    {privateDetails.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePrivateDetail(idx)}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-medium cursor-pointer"
+                      >
+                        {t('common:actions.remove', 'Remove')}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        {t('report:private_details.type_label', 'Detail Type')}
+                      </label>
+                      <select
+                        value={detail.detail_type}
+                        onChange={(e) => handleUpdatePrivateDetail(idx, 'detail_type', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="lock_screen">{t('report:private_details.type_lock_screen', 'Lock Screen / Wallpaper')}</option>
+                        <option value="scratch_mark">{t('report:private_details.type_scratch_mark', 'Scratch / Physical Mark')}</option>
+                        <option value="bag_contents">{t('report:private_details.type_bag_contents', 'Inner Bag / Wallet Contents')}</option>
+                        <option value="case_sticker">{t('report:private_details.type_case_sticker', 'Sticker / Case Characteristic')}</option>
+                        <option value="serial_partial">{t('report:private_details.type_serial_partial', 'Serial / Model / Identifier')}</option>
+                        <option value="custom">{t('report:private_details.type_custom', 'Custom Private Detail')}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        {t('report:private_details.label_label', 'Detail Prompt / Label')}
+                      </label>
+                      <input
+                        type="text"
+                        value={detail.detail_label}
+                        onChange={(e) => handleUpdatePrivateDetail(idx, 'detail_label', e.target.value)}
+                        placeholder={t('report:private_details.label_placeholder', 'e.g. What is on the lock screen?')}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        {t('report:private_details.value_label', 'Secret Value (The correct answer)')}
+                      </label>
+                      <input
+                        type="text"
+                        value={detail.detail_value}
+                        onChange={(e) => handleUpdatePrivateDetail(idx, 'detail_value', e.target.value)}
+                        placeholder={t('report:private_details.value_placeholder', 'e.g. Photo of a golden retriever puppy')}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Section 4: Image Upload */}
         <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
           <div>
@@ -942,6 +1288,71 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
               </div>
             </div>
           )}
+
+          {/* Vision AI Photo Analysis & Suggestions */}
+          {isAnalyzingPhoto && (
+            <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/60 flex items-center space-x-2 text-xs text-blue-700 dark:text-blue-300">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+              <span>{t('report:vision.analyzing', 'Analyzing photo with Vision AI...')}</span>
+            </div>
+          )}
+
+          {visionSuggestions && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider">
+                    {t('report:vision.suggestion_badge', 'AI Suggestion')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApplyAllSuggestions}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+                >
+                  {t('report:vision.apply_all', 'Apply Suggestions')}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {visionSuggestions.categoryName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (visionSuggestions.categoryId) {
+                        setValue('categoryId', visionSuggestions.categoryId);
+                      }
+                    }}
+                    className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-slate-800 dark:text-slate-200 hover:border-blue-400 transition cursor-pointer shadow-2xs"
+                  >
+                    <span className="text-slate-500 mr-1.5">{t('report:vision.category')}:</span>
+                    <strong className="text-blue-600 dark:text-blue-400">{visionSuggestions.categoryName}</strong>
+                  </button>
+                )}
+
+                {visionSuggestions.color && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-slate-800 dark:text-slate-200 shadow-2xs">
+                    <span className="text-slate-500 mr-1.5">{t('report:vision.color')}:</span>
+                    <strong>{visionSuggestions.color}</strong>
+                  </span>
+                )}
+
+                {visionSuggestions.tags && visionSuggestions.tags.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {visionSuggestions.tags.map((tag, tIdx) => (
+                      <span
+                        key={tIdx}
+                        className="px-2 py-0.5 rounded-md bg-blue-100/70 dark:bg-blue-900/40 text-[11px] text-blue-800 dark:text-blue-300 font-medium"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Submit Actions */}
@@ -975,6 +1386,66 @@ export const ReportItemPage: React.FC<ReportItemPageProps> = ({ initialType = 'l
           </button>
         </div>
       </form>
+
+      {/* Duplicate Open Report Warning Modal */}
+      {duplicateWarningOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {t('report:duplicate_modal.title')}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {t('report:duplicate_modal.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+              {detectedDuplicates.map((dup) => (
+                <div key={dup.id} className="pt-2 pb-2 flex items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                      {dup.title}
+                    </span>
+                    <span className="text-slate-400">
+                      {dup.location_city || 'City'} • {dup.type}
+                    </span>
+                  </div>
+                  <Link
+                    to={`/items/${dup.id}`}
+                    target="_blank"
+                    className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:underline shrink-0"
+                  >
+                    {t('report:duplicate_modal.view_existing')}
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setDuplicateWarningOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50"
+              >
+                {t('common:actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleProceedDuplicate}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-xs"
+              >
+                {t('report:duplicate_modal.continue_submit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

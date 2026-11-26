@@ -4,6 +4,7 @@ import { supabaseAdmin, isServerSupabaseConfigured } from '../config/supabase.js
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { sendNotification } from '../services/notificationService.js';
+import { redactSensitiveData } from '../services/redaction.js';
 
 export const messagesRouter = Router();
 
@@ -119,13 +120,20 @@ messagesRouter.post(
 
       const recipientId = conv.participant_one === senderId ? conv.participant_two : conv.participant_one;
 
+      // Contact sharing: both participants must have explicitly agreed to share contacts
+      const bothAgreed =
+        Boolean(conv.share_contact_participant_one) &&
+        Boolean(conv.share_contact_participant_two);
+
+      const safeContent = bothAgreed ? content : redactSensitiveData(content);
+
       // Insert message
       const { data: message, error: msgErr } = await supabaseAdmin
         .from('messages')
         .insert({
           conversation_id,
           sender_id: senderId,
-          content,
+          content: safeContent,
           is_read: false,
         })
         .select('*, sender:profiles(id, full_name, avatar_url)')
@@ -151,6 +159,58 @@ messagesRouter.post(
       res.status(201).json({ message });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to send message' });
+    }
+  }
+);
+
+// POST /api/messages/:conversationId/share-contact - Toggle or approve contact sharing
+messagesRouter.post(
+  '/:conversationId/share-contact',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { conversationId } = req.params;
+      const userId = req.user!.id;
+
+      const { data: conv, error: convErr } = await supabaseAdmin
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .single();
+
+      if (convErr || !conv) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      if (conv.participant_one !== userId && conv.participant_two !== userId) {
+        return res.status(403).json({ error: 'Forbidden: Not a participant' });
+      }
+
+      const isPartOne = conv.participant_one === userId;
+      const updateData = isPartOne
+        ? { share_contact_participant_one: true }
+        : { share_contact_participant_two: true };
+
+      const { data: updatedConv, error: updateErr } = await supabaseAdmin
+        .from('conversations')
+        .update(updateData)
+        .eq('id', conversationId)
+        .select('*')
+        .single();
+
+      if (updateErr) throw updateErr;
+
+      const bothAgreed =
+        Boolean(updatedConv.share_contact_participant_one) &&
+        Boolean(updatedConv.share_contact_participant_two);
+
+      res.json({
+        conversation: updatedConv,
+        bothAgreed,
+        status: bothAgreed ? 'active' : 'pending_partner',
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update contact sharing' });
     }
   }
 );
