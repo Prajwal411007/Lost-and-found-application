@@ -37,6 +37,7 @@ const CampusPage = lazy(() => import('@/pages/campus/Campus').then(m => ({ defau
 const MyItemsPage = lazy(() => import('@/pages/items/MyItems').then(m => ({ default: m.MyItemsPage })));
 const PublicTagPage = lazy(() => import('@/pages/items/PublicTag').then(m => ({ default: m.PublicTagPage })));
 const InsightsPage = lazy(() => import('@/pages/info/Insights').then(m => ({ default: m.InsightsPage })));
+const ClaimsWalkthroughDemo = lazy(() => import('@/pages/demo/ClaimsWalkthroughDemo').then(m => ({ default: m.ClaimsWalkthroughDemo })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,7 @@ export const App: React.FC = () => {
                       <Route path="/contact" element={<ContactPage />} />
                       <Route path="/help" element={<HelpPage />} />
                       <Route path="/insights" element={<InsightsPage />} />
+                      <Route path="/demo/claims-walkthrough/:tab?" element={<ClaimsWalkthroughDemo />} />
 
                       {/* Browse & Items */}
                       <Route path="/browse" element={<BrowsePage />} />

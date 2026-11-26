@@ -46,4 +46,26 @@ describe('Security Boundaries & Privacy Invariants', () => {
     expect(res.headers).toHaveProperty('ratelimit-limit');
     expect([200, 503]).toContain(res.status);
   });
+
+  it('Hidden proof details endpoint rejects unauthorized requests', async () => {
+    const res = await request(app).get('/api/items/d0000000-0000-0000-0000-000000000001/private-details');
+    expect(res.status).toBe(401);
+  });
+
+  it('Handover confirmation endpoint requires authentication', async () => {
+    const res = await request(app).post('/api/claims/c0000000-0000-0000-0000-000000000001/handover-confirm');
+    expect(res.status).toBe(401);
+  });
+
+  it('Claim dispute endpoint requires authentication', async () => {
+    const res = await request(app).post('/api/claims/c0000000-0000-0000-0000-000000000001/dispute').send({
+      reason: 'Suspicious mismatch at pickup',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('Admin audit logs endpoint rejects non-admin unauthorized requests', async () => {
+    const res = await request(app).get('/api/admin/audit-logs');
+    expect(res.status).toBe(401);
+  });
 });

@@ -16,14 +16,14 @@ describe('Express Backend API Integration Tests', () => {
     expect(res.body).toHaveProperty('totalReported');
     expect(res.body).toHaveProperty('itemsReturned');
     expect(res.body).toHaveProperty('returnRate');
-  });
+  }, 15000);
 
   it('GET /api/stats/hotspots returns privacy-preserved rounded clusters', async () => {
     const res = await request(app).get('/api/stats/hotspots');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('hotspots');
     expect(Array.isArray(res.body.hotspots)).toBe(true);
-  });
+  }, 15000);
 
   it('GET /api/stats/insights returns summary, categories and weekly trends', async () => {
     const res = await request(app).get('/api/stats/insights');

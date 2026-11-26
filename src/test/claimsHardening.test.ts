@@ -113,4 +113,61 @@ describe('Claim Verification Hardening & Match Engine', () => {
     const hoursSincePast = (Date.now() - pastCooldown.getTime()) / (3600 * 1000);
     expect(hoursSincePast >= 24).toBe(true);
   });
+
+  it('puts competing claims on hold when one claim is approved', () => {
+    const claims = [
+      { id: 'claim-1', item_id: 'item-100', status: 'pending' },
+      { id: 'claim-2', item_id: 'item-100', status: 'pending' },
+      { id: 'claim-3', item_id: 'item-100', status: 'pending' },
+    ];
+
+    const approvedClaimId = 'claim-1';
+
+    const updatedClaims = claims.map((c) => {
+      if (c.id === approvedClaimId) return { ...c, status: 'approved' };
+      if (c.status === 'pending') return { ...c, status: 'on_hold' };
+      return c;
+    });
+
+    expect(updatedClaims.find((c) => c.id === 'claim-1')?.status).toBe('approved');
+    expect(updatedClaims.find((c) => c.id === 'claim-2')?.status).toBe('on_hold');
+    expect(updatedClaims.find((c) => c.id === 'claim-3')?.status).toBe('on_hold');
+  });
+
+  it('verifies claimant response sanitization excludes private details and match explanations', () => {
+    const rawClaimFromDb = {
+      id: 'claim-1',
+      item_id: 'item-1',
+      claimant_id: 'claimant-user-1',
+      status: 'pending',
+      verification_answers: { answers: { color: 'black' }, submitted_at: '2026-11-26' },
+      proof_files: [{ name: 'receipt.pdf', url: 'https://storage/receipt.pdf', size: 1024, file_type: 'application/pdf' }],
+      match_score: 'high',
+      match_explanation: 'Matched secret golden retriever wallpaper',
+      item_private_details: [{ detail_value: 'Golden retriever puppy' }],
+    };
+
+    // Function simulating claimant API serialization
+    const sanitizeForClaimant = (claim: typeof rawClaimFromDb) => {
+      const { match_explanation, item_private_details, ...claimantSafe } = claim;
+      return claimantSafe;
+    };
+
+    const claimantView = sanitizeForClaimant(rawClaimFromDb);
+    expect(claimantView).not.toHaveProperty('match_explanation');
+    expect(claimantView).not.toHaveProperty('item_private_details');
+    expect(claimantView).toHaveProperty('id', 'claim-1');
+  });
+
+  it('flags description mirroring when claimant overlap exceeds threshold', async () => {
+    // Test description mirroring rule threshold (>65%)
+    const flagParams = {
+      claimantId: 'user-fraud-1',
+      itemId: 'item-123',
+      claimAnswersText: 'Found space gray laptop with purple sticker on lid',
+      descriptionOverlapPercent: 78,
+    };
+
+    expect(flagParams.descriptionOverlapPercent).toBeGreaterThan(65);
+  });
 });

@@ -180,34 +180,140 @@ Lists all candidate matches for items owned by the authenticated caller.
 
 ---
 
-## 5. Ownership Claims
+## 5. Ownership Claims & Verification Hardening
 
 ### `POST /api/claims`
 Submit a private proof-of-ownership claim on a found item.
 - **Auth Required**: Yes (`Bearer <token>`)
+- **Guards & Anti-Fraud Enforcements**:
+  - Max 1 active claim per item.
+  - Max 2 attempts per user per item with a mandatory 24-hour cooldown after rejection.
+  - Daily/weekly limits (max 3 rejections/24h, 10/week) trigger automatic temporary lock (`user_claim_locks`).
+  - Fresh accounts (<24h old) restricted from claiming high-value categories (phones, laptops, wallets, jewellery).
+  - PII redaction scanner automatically masks sensitive numbers.
+  - Evaluates deterministic verification match engine and flags suspicious patterns for admin review.
 - **Request Body**:
 ```json
 {
   "item_id": "d0000000-0000-0000-0000-000000000002",
   "verification_answers": {
-    "answers": { "finder_question": "NASA Apollo sticker" },
-    "proof_description": "Has a NASA sticker on the top right corner and a slight scratch on the base."
+    "answers": {
+      "marks": "Scratch near bottom right USB-C port",
+      "category_detail": "Golden retriever puppy wallpaper"
+    },
+    "proof_description": "Purchased at campus store last semester."
+  },
+  "proof_files": [
+    {
+      "name": "receipt.pdf",
+      "url": "https://...",
+      "size": 184000,
+      "file_type": "application/pdf"
+    }
+  ]
+}
+```
+- **Response `201 Created`**:
+```json
+{
+  "claim": {
+    "id": "c0000000-...",
+    "status": "pending",
+    "item_id": "...",
+    "created_at": "..."
   }
 }
 ```
-- **Response `201 Created`**
+*(Notice: `match_explanation` and `item_private_details` are strictly excluded from the claimant response).*
+
+### `GET /api/claims`
+List claims submitted by the authenticated user, or claims received on items found by the authenticated user.
+- **Auth Required**: Yes (`Bearer <token>`)
+
+### `GET /api/claims/item/:itemId`
+Side-by-side claim review for the item finder or platform admin.
+- **Auth Required**: Yes (`Bearer <token>`, finder or admin only)
+- **Response `200 OK`**: Returns claimant's answers, proof files, claimant profile aggregate (account age, return history), finder's hidden proof details (`item_private_details`), and the `match_score` / `match_explanation`.
 
 ### `PATCH /api/claims/:id/status`
-Approve or reject a claim (finder only).
+Approve or reject a claim (finder or admin only).
+- **Behavior**: Approving a claim automatically transitions other competing pending claims on the same item to `'on_hold'`. Rejection reasons remain completely neutral to prevent leaking verification secrets.
 - **Auth Required**: Yes (`Bearer <token>`)
+
+### `POST /api/claims/:id/handover-confirm`
+Mutual safe handover confirmation.
+- **Behavior**: Records individual confirmation (`finder_confirmed_handover` or `claimant_confirmed_handover`). Item transitions to `'returned'` only when **both** parties confirm.
+- **Auth Required**: Yes (`Bearer <token>`, claim participant only)
+
+### `POST /api/claims/:id/dispute`
+Flag an active claim with a dispute.
+- **Behavior**: Freezes claim and item status to `'disputed'` and notifies platform moderators.
+- **Auth Required**: Yes (`Bearer <token>`, claim participant only)
+
+### `POST /api/claims/:id/report-suspicious`
+Finder flags an incoming claim as suspicious.
+- **Auth Required**: Yes (`Bearer <token>`, finder only)
+
+---
+
+## 5.1 Item Private Proof Details (Finder Only)
+
+### `GET /api/items/:id/private-details`
+Retrieve secret proof details.
+- **Auth Required**: Yes (item finder or admin only)
+
+### `POST /api/items/:id/private-details`
+Register 1 to 3 secret proof details for a found item report.
+- **Auth Required**: Yes (item finder only)
 - **Request Body**:
 ```json
 {
-  "status": "approved",
-  "finder_notes": "Answers verified. Let us meet tomorrow at Green Library lobby."
+  "details": [
+    {
+      "detail_type": "lock_screen",
+      "detail_label": "Lock screen wallpaper",
+      "detail_value": "Golden retriever puppy on green grass"
+    },
+    {
+      "detail_type": "scratch_mark",
+      "detail_label": "Scratch location",
+      "detail_value": "Small scratch near bottom right USB-C charging port"
+    }
+  ]
 }
 ```
-- **Response `200 OK`**
+
+---
+
+## 5.2 Admin Actions & Immutable Audit Log
+
+### `POST /api/admin/actions`
+Execute moderation action on a user or claim.
+- **Auth Required**: Yes (`role === 'admin'`)
+- **Actions**: `'warn_user'`, `'lock_claims'`, `'suspend_user'`, `'dismiss_flag'`, `'resolve_dispute'`.
+- **Behavior**: Automatically appends an immutable entry to `admin_audit_logs`.
+
+### `GET /api/admin/audit-logs`
+Retrieve audit trail logs.
+- **Auth Required**: Yes (`role === 'admin'`)
+
+---
+
+## 5.3 Data Retention & Scheduled Anonymization Routine
+
+Sensitive verification answers and proof document attachments are retained for 90 days after an item is closed (`'returned'` or `'cancelled'`).
+
+### Automated Database Routine (`cleanup_expired_claims()`)
+```sql
+-- Run daily cleanup using pg_cron (Supabase Dashboard -> SQL Editor)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+SELECT cron.schedule(
+    'daily-claims-retention-cleanup',
+    '0 3 * * *',
+    'SELECT public.cleanup_expired_claims();'
+);
+```
 
 ---
 
