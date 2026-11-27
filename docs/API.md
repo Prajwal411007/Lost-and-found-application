@@ -369,3 +369,68 @@ List seeded campus hubs (Stanford, MIT, Oxford).
 ### `GET /api/campus/places/:id/buildings`
 List buildings, landmarks, codes, and coordinates for a selected campus.
 
+---
+
+## 9. Community, Notifications & Advanced Features
+
+### `GET /api/community/live-activity`
+Returns real-time aggregated metrics directly from database counts:
+- **Response `200 OK`**:
+```json
+{
+  "reportedToday": 14,
+  "reunitedThisWeek": 8,
+  "activeReports": 45,
+  "timestamp": "2026-11-27T10:00:00.000Z"
+}
+```
+
+### `GET /api/community/stories`
+Fetch published community success stories.
+- **Privacy & Dual Opt-in Guarantee**: Stories are returned **only** when both `finder_opt_in === true` AND `claimant_opt_in === true`, and `is_moderator_removed === false`.
+- **Response `200 OK`**:
+```json
+{
+  "stories": [
+    {
+      "id": "...",
+      "item_id": "...",
+      "story_text": "Thank you so much for finding my MacBook at the library!",
+      "finder_name": "Alex K.",
+      "claimant_name": "Sarah M.",
+      "created_at": "..."
+    }
+  ]
+}
+```
+
+### `POST /api/community/stories/:itemId/opt-in`
+Allows a finder or claimant of a successfully returned item to opt in and submit a thank-you message.
+- **Auth Required**: Yes
+- **Body**: `{ "thank_you_note": "Thank you for safely returning my wallet!" }`
+
+### `GET /api/community/leaderboard`
+Returns the top finders of the current month.
+- **Privacy Opt-In Invariant**: Only includes profiles where `leaderboard_opt_in === true` (or unset default true; users who opted out with `false` are completely omitted).
+
+### `GET /api/community/smart-suggestions`
+Returns personalized smart suggestions for the user's dashboard:
+1. `nearLostReports`: Open found items reported in the same cities or categories as the user's open lost reports.
+2. `helpCandidates`: Recently reported open lost items in the user's general area.
+- **Auth Required**: Yes
+
+### `POST /api/community/digest-preferences`
+Updates the user's quiet hours and digest preferences in their profile:
+- **Auth Required**: Yes
+- **Body**:
+```json
+{
+  "weekly_digest_enabled": true,
+  "quiet_hours_enabled": true,
+  "quiet_hours_start": "22:00",
+  "quiet_hours_end": "08:00",
+  "leaderboard_opt_in": true
+}
+```
+
+

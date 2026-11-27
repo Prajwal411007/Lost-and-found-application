@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, ChevronRight } from 'lucide-react';
+import { HelpCircle, ChevronRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const HelpPage: React.FC = () => {
@@ -30,6 +30,14 @@ export const HelpPage: React.FC = () => {
         </div>
         <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Help & Frequently Asked Questions</h1>
         <p className="text-sm text-slate-500 mt-1">Answers to common questions regarding reports, safety, and claims.</p>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('replay-onboarding-tour'))}
+          className="mt-4 inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition shadow-2xs cursor-pointer"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+          <span>Replay Guided Platform Tour</span>
+        </button>
       </div>
 
       <div className="space-y-4">

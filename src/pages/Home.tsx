@@ -13,6 +13,12 @@ import {
   Package,
   Navigation,
   RotateCcw,
+  Flame,
+  Trophy,
+  Quote,
+  HeartHandshake,
+  CheckCircle2,
+  Award,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -24,6 +30,7 @@ import { formatRelativeTime } from '@/lib/utils';
 import { getCategoryDisplayName, formatLocalizedDate, formatLocalizedNumber } from '@/lib/i18nHelpers';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { SkeletonCard } from '@/components/common/SkeletonCard';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -48,6 +55,13 @@ export const Home: React.FC = () => {
     activeMatches: 0,
     returnRate: 0,
   });
+  const [liveActivity, setLiveActivity] = useState<{
+    reportedToday: number;
+    reunitedThisWeek: number;
+    activeReports: number;
+  }>({ reportedToday: 0, reunitedThisWeek: 0, activeReports: 0 });
+  const [stories, setStories] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -58,6 +72,36 @@ export const Home: React.FC = () => {
       }
 
       try {
+        // Fetch live community activity
+        fetch('/api/community/live-activity')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d) {
+              setLiveActivity({
+                reportedToday: d.reportedToday || 0,
+                reunitedThisWeek: d.reunitedThisWeek || 0,
+                activeReports: d.activeReports || 0,
+              });
+            }
+          })
+          .catch(() => {});
+
+        // Fetch success stories
+        fetch('/api/community/stories')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d?.stories) setStories(d.stories);
+          })
+          .catch(() => {});
+
+        // Fetch leaderboard
+        fetch('/api/community/leaderboard')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d?.leaderboard) setLeaderboard(d.leaderboard);
+          })
+          .catch(() => {});
+
         // Fetch recent items
         const { data: items } = await supabase
           .from('items')
@@ -126,6 +170,22 @@ export const Home: React.FC = () => {
     <div className="space-y-16 pb-16">
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-12 pb-16 sm:pt-20 sm:pb-24 bg-gradient-to-b from-blue-50/50 via-white to-slate-50 dark:from-slate-900/60 dark:via-slate-900 dark:to-slate-900/80 border-b border-slate-200/60 dark:border-slate-800">
+        {/* Floating map pin decorative elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none select-none" aria-hidden="true">
+          <div className="absolute top-12 left-10 text-rose-500/25 animate-bounce duration-1000">
+            <MapPin className="w-8 h-8" />
+          </div>
+          <div className="absolute top-20 right-16 text-teal-500/25 animate-pulse duration-700">
+            <MapPin className="w-10 h-10" />
+          </div>
+          <div className="absolute bottom-10 left-1/4 text-blue-500/20 animate-bounce">
+            <MapPin className="w-6 h-6" />
+          </div>
+          <div className="absolute bottom-16 right-1/4 text-amber-500/20 animate-pulse">
+            <MapPin className="w-7 h-7" />
+          </div>
+        </div>
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-xs font-semibold uppercase tracking-wider mb-6 border border-blue-200 dark:border-blue-800/60">
             <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -234,6 +294,25 @@ export const Home: React.FC = () => {
             >
               {t('browse:filters.type_found', 'Found Items')}
             </button>
+          </div>
+
+          {/* Live Community Activity Strip */}
+          <div className="mt-8 max-w-lg mx-auto flex items-center justify-center flex-wrap gap-2 py-2 px-4 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-xs">
+            <span className="flex items-center text-rose-600 dark:text-rose-400 font-bold">
+              <Flame className="w-3.5 h-3.5 mr-1 fill-rose-500 text-rose-500 animate-pulse" />
+              Live Activity:
+            </span>
+            <span className="text-slate-700 dark:text-slate-300">
+              <strong className="text-slate-900 dark:text-white font-bold">{liveActivity.reportedToday}</strong> reported today
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+            <span className="text-slate-700 dark:text-slate-300">
+              <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{liveActivity.reunitedThisWeek}</strong> reunited this week
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+            <span className="text-slate-500 dark:text-slate-400">
+              {liveActivity.activeReports} active
+            </span>
           </div>
         </div>
       </section>
@@ -394,7 +473,9 @@ export const Home: React.FC = () => {
         </div>
 
         {isLoading ? (
-          <LoadingSpinner message={t('common:actions.loading')} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <SkeletonCard count={3} />
+          </div>
         ) : recentItems.length === 0 ? (
           <EmptyState
             title={t('home:recent.no_items')}
@@ -470,6 +551,173 @@ export const Home: React.FC = () => {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Community Reunion Stories (Dual Opt-in, Real Data Only) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-xs font-bold uppercase tracking-wider mb-2 border border-teal-200/60 dark:border-teal-800/60">
+              <HeartHandshake className="w-3.5 h-3.5" />
+              <span>Community Impact</span>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              Reunion Success Stories
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Real stories shared with mutual consent by finders and rightful owners
+            </p>
+          </div>
+        </div>
+
+        {stories.length === 0 ? (
+          <div className="p-8 rounded-3xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-center space-y-2">
+            <HeartHandshake className="w-10 h-10 text-teal-500/70 mx-auto stroke-1" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              No published stories yet this month
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              Every returned item has a story. When both finder and owner opt in during reunion, their thank-you note will appear here to inspire others.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {stories.map((story) => (
+              <div
+                key={story.id}
+                className="p-6 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex flex-col justify-between space-y-4"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="p-2 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400">
+                      <Quote className="w-4 h-4" />
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                      Reunited
+                    </span>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 italic leading-relaxed">
+                    "{story.story_text || story.claimant_note || 'Thank you for safely returning my belongings!'}"
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    {story.item?.title || 'Reunited Item'}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {formatRelativeTime(story.created_at)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Top Finders This Month Leaderboard (Opted-in Users Only) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200/80 dark:border-slate-700/80 p-6 sm:p-8 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700/60">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <Trophy className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Top Finders This Month
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Celebrating community members who helped return lost items. (Opt-in only)
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/report/found"
+              className="self-start sm:self-auto px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition"
+            >
+              Report Found Item
+            </Link>
+          </div>
+
+          {leaderboard.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <Award className="w-10 h-10 text-amber-500/60 mx-auto stroke-1" />
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                Leaderboard open for this month!
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                Be the first to return an item to an owner and opt in to appear on the community board.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {leaderboard.map((entry, idx) => (
+                <div
+                  key={entry.profile.id}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-700/80"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span
+                      className={`w-7 h-7 rounded-full font-black text-xs flex items-center justify-center ${
+                        idx === 0
+                          ? 'bg-amber-400 text-amber-950 shadow-xs'
+                          : idx === 1
+                          ? 'bg-slate-300 text-slate-800'
+                          : idx === 2
+                          ? 'bg-amber-700/30 text-amber-700'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">
+                        {entry.profile.full_name || 'Community Finder'}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Campus Contributor
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-xs font-black">
+                    {entry.count} {entry.count === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Clear Call-To-Action Band */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="relative overflow-hidden rounded-3xl bg-slate-900 dark:bg-slate-800/90 p-8 sm:p-12 text-center text-white shadow-xl border border-slate-800">
+          <div className="max-w-2xl mx-auto space-y-4 relative z-10">
+            <h2 className="text-2xl sm:text-4xl font-black tracking-tight">
+              Lost something, or spotted an item on campus?
+            </h2>
+            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+              Every report increases the chance of a successful reunion. Join thousands of students and residents helping each other every day.
+            </p>
+            <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                to="/report/lost"
+                className="px-6 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm shadow-md transition"
+              >
+                Report Lost Item
+              </Link>
+              <Link
+                to="/report/found"
+                className="px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md transition"
+              >
+                Report Found Item
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* How It Works Section */}

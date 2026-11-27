@@ -74,6 +74,11 @@ export interface Profile {
   phone: string | null;
   contact_preference: 'in_app' | 'email' | 'phone';
   preferred_language?: 'en' | 'kn' | 'hi' | null;
+  leaderboard_opt_in?: boolean;
+  weekly_digest_enabled?: boolean;
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
   role: UserRole;
   is_banned: boolean;
   created_at: string;
@@ -117,6 +122,7 @@ export interface Item {
   longitude: number | null;
   date_occurred: string;
   primary_image_url: string | null;
+  image_phash?: string | null;
   attributes: ItemAttributes;
   campus_place_id: string | null;
   campus_building_id: string | null;
@@ -342,5 +348,36 @@ export interface RegisteredItem {
   updated_at: string;
   category?: Category | null;
 }
+
+export interface SuccessStory {
+  id: string;
+  item_id: string;
+  claim_id?: string | null;
+  finder_id?: string | null;
+  claimant_id?: string | null;
+  finder_opt_in: boolean;
+  claimant_opt_in: boolean;
+  item_type: 'lost' | 'found';
+  item_category_name?: string | null;
+  general_location?: string | null;
+  time_to_return_days: number;
+  thank_you_note?: string | null;
+  is_moderator_removed: boolean;
+  moderator_notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  item?: Item;
+  finder?: Profile;
+  claimant?: Profile;
+}
+
+export interface UserFavorite {
+  id: string;
+  user_id: string;
+  item_id: string;
+  created_at: string;
+  item?: Item;
+}
+
 
 

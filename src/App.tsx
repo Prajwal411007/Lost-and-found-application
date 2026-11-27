@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -9,6 +9,9 @@ import { Footer } from '@/components/common/Footer';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { LocationPermissionDialog } from '@/components/common/LocationPermissionDialog';
+import { CommandPalette } from '@/components/common/CommandPalette';
+import { BottomNav } from '@/components/common/BottomNav';
+import { OnboardingTour } from '@/components/common/OnboardingTour';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
 
@@ -49,6 +52,14 @@ const queryClient = new QueryClient({
 });
 
 export const App: React.FC = () => {
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpen = () => setIsCommandPaletteOpen(true);
+    window.addEventListener('open-command-palette', handleOpen);
+    return () => window.removeEventListener('open-command-palette', handleOpen);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
@@ -56,7 +67,12 @@ export const App: React.FC = () => {
           <LocationProvider>
             <BrowserRouter>
               <LocationPermissionDialog />
-              <div className="flex flex-col min-h-screen bg-transparent text-slate-900 dark:text-slate-100 transition-colors duration-200">
+              <CommandPalette
+                isOpen={isCommandPaletteOpen}
+                onClose={() => setIsCommandPaletteOpen(false)}
+              />
+              <OnboardingTour />
+              <div className="flex flex-col min-h-screen bg-transparent text-slate-900 dark:text-slate-100 transition-colors duration-200 pb-16 md:pb-0">
               <Navbar />
               <main className="flex-1">
                 <ErrorBoundary>
@@ -168,6 +184,7 @@ export const App: React.FC = () => {
                 </ErrorBoundary>
               </main>
               <Footer />
+              <BottomNav />
             </div>
           </BrowserRouter>
         </LocationProvider>

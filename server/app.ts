@@ -18,6 +18,7 @@ import { institutionsRouter } from './routes/institutions.js';
 import { organizationsRouter } from './routes/organizations.js';
 import { reviewsRouter } from './routes/reviews.js';
 import { visionRouter } from './routes/vision.js';
+import { communityRouter } from './routes/community.js';
 import { metaRouter, handleItemRouteCrawler } from './routes/meta.js';
 import { isServerSupabaseConfigured } from './config/supabase.js';
 
@@ -97,6 +98,7 @@ app.use('/api/nearby-institutions', institutionsRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/vision', visionRouter);
+app.use('/api/community', communityRouter);
 
 // Open Graph & Social Share Preview Cards
 app.get('/items/:id', handleItemRouteCrawler);

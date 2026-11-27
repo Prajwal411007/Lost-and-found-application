@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, Phone, Mail, Shield, CheckCircle2, AlertCircle, Loader2, Globe, Star, ShieldCheck } from 'lucide-react';
+import { User, Phone, Mail, Shield, CheckCircle2, AlertCircle, Loader2, Globe, Star, ShieldCheck, Bell, Moon, Award } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 const profileSchema = z.object({
@@ -28,6 +28,58 @@ export const ProfilePage: React.FC = () => {
     totalReviews: number;
   }>({ reviews: [], averageRating: 0, totalReviews: 0 });
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+
+  // Community & Notification Preferences State
+  const [weeklyDigest, setWeeklyDigest] = useState(profile?.weekly_digest_enabled ?? true);
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(profile?.quiet_hours_enabled ?? false);
+  const [quietHoursStart, setQuietHoursStart] = useState(profile?.quiet_hours_start || '22:00');
+  const [quietHoursEnd, setQuietHoursEnd] = useState(profile?.quiet_hours_end || '08:00');
+  const [leaderboardOptIn, setLeaderboardOptIn] = useState(profile?.leaderboard_opt_in ?? true);
+  const [isSavingPrefs, setIsSavingPrefs] = useState(false);
+  const [prefsSuccess, setPrefsSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (profile) {
+      setWeeklyDigest(profile.weekly_digest_enabled ?? true);
+      setQuietHoursEnabled(profile.quiet_hours_enabled ?? false);
+      setQuietHoursStart(profile.quiet_hours_start || '22:00');
+      setQuietHoursEnd(profile.quiet_hours_end || '08:00');
+      setLeaderboardOptIn(profile.leaderboard_opt_in ?? true);
+    }
+  }, [profile]);
+
+  const handleSaveNotificationPrefs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPrefs(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const session = (await supabase?.auth.getSession())?.data.session;
+      const res = await fetch('/api/community/digest-preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          weekly_digest_enabled: weeklyDigest,
+          quiet_hours_enabled: quietHoursEnabled,
+          quiet_hours_start: quietHoursStart,
+          quiet_hours_end: quietHoursEnd,
+          leaderboard_opt_in: leaderboardOptIn,
+        }),
+      });
+
+      if (res.ok) {
+        setPrefsSuccess('Preferences saved successfully!');
+        if (refreshProfile) refreshProfile();
+        setTimeout(() => setPrefsSuccess(null), 4000);
+      }
+    } catch (err: any) {
+      console.error('Failed to save preferences:', err);
+    } finally {
+      setIsSavingPrefs(false);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -229,6 +281,134 @@ export const ProfilePage: React.FC = () => {
                 </>
               ) : (
                 'Save Changes'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Notification & Community Preferences Section */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 sm:p-8 space-y-6">
+        <div className="flex items-center space-x-3 pb-5 border-b border-slate-100 dark:border-slate-700">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <Bell className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+              Notifications & Quiet Hours
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Customize weekly summary digests, quiet hours schedule, and leaderboard visibility.
+            </p>
+          </div>
+        </div>
+
+        {prefsSuccess && (
+          <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-300 flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{prefsSuccess}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSaveNotificationPrefs} className="space-y-5">
+          {/* Weekly Digest Toggle */}
+          <div className="flex items-start justify-between p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/40">
+            <div className="space-y-0.5">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                Weekly Campus & Area Digest
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Receive a Monday morning summary of items found and reunited in your active areas.
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={weeklyDigest}
+              onChange={(e) => setWeeklyDigest(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Quiet Hours Settings */}
+          <div className="p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
+            <div className="flex items-start justify-between">
+              <div className="space-y-0.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center">
+                  <Moon className="w-3.5 h-3.5 mr-1 text-indigo-500" />
+                  Quiet Hours (Do Not Disturb)
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Mute live notifications and sound alerts during specified hours.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={quietHoursEnabled}
+                onChange={(e) => setQuietHoursEnabled(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+            </div>
+
+            {quietHoursEnabled && (
+              <div className="pt-2 grid grid-cols-2 gap-3 border-t border-slate-200/60 dark:border-slate-700/60">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={quietHoursStart}
+                    onChange={(e) => setQuietHoursStart(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={quietHoursEnd}
+                    onChange={(e) => setQuietHoursEnd(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Community Leaderboard Opt-in */}
+          <div className="flex items-start justify-between p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/40">
+            <div className="space-y-0.5">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center">
+                <Award className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                Community Leaderboard Participation
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Display your profile on the monthly "Top Finders" community board. You can opt out at any time.
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={leaderboardOptIn}
+              onChange={(e) => setLeaderboardOptIn(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={isSavingPrefs}
+              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold shadow-xs transition disabled:opacity-60 flex items-center cursor-pointer"
+            >
+              {isSavingPrefs ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Notification Preferences'
               )}
             </button>
           </div>

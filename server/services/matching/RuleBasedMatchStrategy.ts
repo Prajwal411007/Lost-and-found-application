@@ -1,34 +1,8 @@
 import { MatchStrategy } from './MatchStrategy.js';
 import { MatchResult, MatchScoreDimension } from '../../types/index.js';
-
-// Common English stopwords to ignore in text similarity
-const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with',
-  'by', 'about', 'like', 'through', 'over', 'before', 'between', 'after', 'since',
-  'without', 'under', 'within', 'along', 'following', 'across', 'behind', 'beyond',
-  'plus', 'except', 'until', 'around', 'near', 'down', 'up', 'off', 'is', 'it', 'my',
-  'was', 'lost', 'found', 'item', 'please', 'help', 'some', 'has', 'have',
-]);
-
-function tokenize(text: string | null | undefined): Set<string> {
-  if (!text) return new Set();
-  const tokens = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
-  return new Set(tokens);
-}
-
-function calculateJaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
-  if (setA.size === 0 || setB.size === 0) return 0;
-  let intersectionSize = 0;
-  for (const item of setA) {
-    if (setB.has(item)) intersectionSize++;
-  }
-  const unionSize = setA.size + setB.size - intersectionSize;
-  return unionSize > 0 ? intersectionSize / unionSize : 0;
-}
+import { computeTfIdfCosineSimilarity } from './textSimilarity.js';
+import { evaluateImageHashSimilarity } from './imageHash.js';
+import { evaluateAttributeSimilarity } from './attributeMatching.js';
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -45,45 +19,56 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export class RuleBasedMatchStrategy implements MatchStrategy {
-  public readonly name = 'Transparent Rule-Based Scorer v1.0';
+  public readonly name = 'Smarter Hybrid TF-IDF & Visual Match Engine v2.0';
 
   public computeMatch(lostItem: any, foundItem: any): MatchResult {
     const breakdown: Record<string, MatchScoreDimension> = {};
 
-    // 1. Text Similarity (Weight: 30%)
-    const lostTextTokens = tokenize(`${lostItem.title} ${lostItem.description}`);
-    const foundTextTokens = tokenize(`${foundItem.title} ${foundItem.description}`);
-    const textSimilarity = calculateJaccardSimilarity(lostTextTokens, foundTextTokens);
+    // Determine if both items have perceptual image hashes
+    const hasImageComparison = Boolean(lostItem.image_phash && foundItem.image_phash);
 
-    let textScore = Math.min(1.0, textSimilarity * 2.2); // Boost moderate token overlaps
-    let textExplanation = `${Math.round(textSimilarity * 100)}% token vocabulary overlap between descriptions`;
+    // Weights allocation
+    const weights = hasImageComparison
+      ? { text: 25, category: 20, distance: 25, date: 10, attributes: 10, image: 10 }
+      : { text: 30, category: 25, distance: 25, date: 15, attributes: 5, image: 0 };
+
+    // 1. Text Similarity (TF-IDF Cosine Similarity + Stemming & Synonyms)
+    const lostFullText = `${lostItem.title || ''} ${lostItem.description || ''}`.trim();
+    const foundFullText = `${foundItem.title || ''} ${foundItem.description || ''}`.trim();
+
+    const textResult = computeTfIdfCosineSimilarity(lostFullText, foundFullText);
+    const textPercent = Math.round(textResult.similarity * 100);
+
+    const keywordNote = textResult.matchedKeywords.length > 0
+      ? ` (matched: ${textResult.matchedKeywords.slice(0, 3).join(', ')})`
+      : '';
 
     breakdown['text_similarity'] = {
-      name: 'Text & Description Similarity',
-      weight: 30,
-      score: textScore,
-      explanation: textExplanation,
+      name: 'Text & Concept Similarity',
+      weight: weights.text,
+      score: textResult.similarity,
+      explanation: `Text ${textPercent}%: TF-IDF cosine similarity with stemming and synonyms${keywordNote}`,
     };
 
-    // 2. Category Match (Weight: 25%)
+    // 2. Category Match
     let categoryScore = 0;
-    let categoryExplanation = 'Different categories';
+    let categoryExplanation = 'Category 0%: Different item categories';
 
     if (lostItem.category_id && foundItem.category_id && lostItem.category_id === foundItem.category_id) {
       categoryScore = 1.0;
-      categoryExplanation = 'Exact category match';
+      categoryExplanation = 'Category 100%: Exact category taxonomy match';
     }
 
     breakdown['category'] = {
       name: 'Category Match',
-      weight: 25,
+      weight: weights.category,
       score: categoryScore,
       explanation: categoryExplanation,
     };
 
-    // 3. Distance Proximity (Weight: 25%)
+    // 3. Geographic Distance Proximity
     let geoScore = 0;
-    let geoExplanation = 'No geographic coordinates provided';
+    let geoExplanation = 'Location 0%: No coordinates available';
 
     if (
       lostItem.latitude &&
@@ -100,39 +85,39 @@ export class RuleBasedMatchStrategy implements MatchStrategy {
 
       if (distanceKm < 1.0) {
         geoScore = 1.0;
-        geoExplanation = `Under 1 km apart (~${Math.round(distanceKm * 1000)} meters)`;
+        geoExplanation = `Location 100%: Under 1 km apart (~${Math.round(distanceKm * 1000)}m)`;
       } else if (distanceKm < 5.0) {
-        geoScore = 0.8;
-        geoExplanation = `Within 5 km radius (${distanceKm.toFixed(1)} km)`;
+        geoScore = 0.85;
+        geoExplanation = `Location 85%: Within 5 km radius (${distanceKm.toFixed(1)} km)`;
       } else if (distanceKm < 25.0) {
-        geoScore = 0.5;
-        geoExplanation = `Within 25 km region (${distanceKm.toFixed(1)} km)`;
+        geoScore = 0.55;
+        geoExplanation = `Location 55%: Within 25 km region (${distanceKm.toFixed(1)} km)`;
       } else if (distanceKm < 50.0) {
-        geoScore = 0.25;
-        geoExplanation = `Same metropolitan area (${distanceKm.toFixed(1)} km)`;
+        geoScore = 0.30;
+        geoExplanation = `Location 30%: Same metro area (${distanceKm.toFixed(1)} km)`;
       } else {
-        geoScore = 0.0;
-        geoExplanation = `Locations are ${distanceKm.toFixed(0)} km apart`;
+        geoScore = 0.05;
+        geoExplanation = `Location 5%: Far apart (${distanceKm.toFixed(0)} km)`;
       }
     } else if (
       lostItem.location_city &&
       foundItem.location_city &&
       lostItem.location_city.toLowerCase() === foundItem.location_city.toLowerCase()
     ) {
-      geoScore = 0.5;
-      geoExplanation = `Both reported in ${lostItem.location_city} (no GPS coordinates)`;
+      geoScore = 0.60;
+      geoExplanation = `Location 60%: Both reported in ${lostItem.location_city} (city match)`;
     }
 
     breakdown['distance'] = {
       name: 'Geographic Distance',
-      weight: 25,
+      weight: weights.distance,
       score: geoScore,
       explanation: geoExplanation,
     };
 
-    // 4. Date Proximity (Weight: 15%)
+    // 4. Date Proximity
     let dateScore = 0;
-    let dateExplanation = 'Date not specified';
+    let dateExplanation = 'Date: Not specified';
 
     if (lostItem.date_occurred && foundItem.date_occurred) {
       const lostDate = new Date(lostItem.date_occurred).getTime();
@@ -141,59 +126,60 @@ export class RuleBasedMatchStrategy implements MatchStrategy {
 
       if (diffDays >= 0 && diffDays <= 2) {
         dateScore = 1.0;
-        dateExplanation = diffDays === 0 ? 'Reported on the same day' : `Found ${diffDays} days after being lost`;
+        dateExplanation = diffDays === 0
+          ? 'Date 100%: Reported on the exact same date'
+          : `Date 100%: Found ${diffDays} day(s) after being lost`;
       } else if (diffDays > 2 && diffDays <= 7) {
-        dateScore = 0.8;
-        dateExplanation = `Found ${diffDays} days after being lost`;
+        dateScore = 0.85;
+        dateExplanation = `Date 85%: Found ${diffDays} days after being lost`;
       } else if (diffDays > 7 && diffDays <= 21) {
-        dateScore = 0.5;
-        dateExplanation = `Found ${diffDays} days after being lost`;
+        dateScore = 0.55;
+        dateExplanation = `Date 55%: Found ${diffDays} days after being lost`;
       } else if (diffDays < 0 && diffDays >= -1) {
-        // Allow 1 day timezone leeway
-        dateScore = 0.7;
-        dateExplanation = 'Dates align within timezone difference';
+        dateScore = 0.70;
+        dateExplanation = 'Date 70%: Aligns within 24h timezone window';
       } else {
-        dateScore = 0.1;
-        dateExplanation = 'Significant date difference';
+        dateScore = 0.15;
+        dateExplanation = 'Date 15%: Significant date interval (>3 weeks)';
       }
     }
 
     breakdown['date_proximity'] = {
       name: 'Date Proximity',
-      weight: 15,
+      weight: weights.date,
       score: dateScore,
       explanation: dateExplanation,
     };
 
-    // 5. Attributes Match (Weight: 5%)
-    let attrScore = 0;
-    let attrExplanation = 'No common attributes matched';
-
-    const lostAttr = lostItem.attributes || {};
-    const foundAttr = foundItem.attributes || {};
-
-    let matchesCount = 0;
-    if (lostAttr.brand && foundAttr.brand && lostAttr.brand.toLowerCase() === foundAttr.brand.toLowerCase()) {
-      matchesCount++;
-    }
-    if (lostAttr.color && foundAttr.color && lostAttr.color.toLowerCase() === foundAttr.color.toLowerCase()) {
-      matchesCount++;
-    }
-
-    if (matchesCount >= 2) {
-      attrScore = 1.0;
-      attrExplanation = 'Both brand and color match';
-    } else if (matchesCount === 1) {
-      attrScore = 0.7;
-      attrExplanation = 'Brand or color matches';
-    }
+    // 5. Item Attributes (Color & Brand Normalized Matching)
+    const attrResult = evaluateAttributeSimilarity(
+      lostItem.attributes || {},
+      foundItem.attributes || {}
+    );
+    const attrPercent = Math.round(attrResult.score * 100);
 
     breakdown['attributes'] = {
       name: 'Item Attributes',
-      weight: 5,
-      score: attrScore,
-      explanation: attrExplanation,
+      weight: weights.attributes,
+      score: attrResult.score,
+      explanation: `Attributes ${attrPercent}%: ${attrResult.explanation}`,
     };
+
+    // 6. Image Perceptual Hash Similarity
+    if (hasImageComparison) {
+      const imageResult = evaluateImageHashSimilarity(
+        lostItem.image_phash,
+        foundItem.image_phash
+      );
+      const imgPercent = Math.round(imageResult.score * 100);
+
+      breakdown['image_similarity'] = {
+        name: 'Visual Photo Similarity',
+        weight: weights.image,
+        score: imageResult.score,
+        explanation: `Image ${imgPercent}%: ${imageResult.explanation}`,
+      };
+    }
 
     // Calculate Total Weighted Score (0 to 100)
     let totalScore = 0;
@@ -202,7 +188,7 @@ export class RuleBasedMatchStrategy implements MatchStrategy {
       totalScore += dim.weight * dim.score;
     }
 
-    totalScore = Math.round(totalScore * 10) / 10; // e.g. 82.5
+    totalScore = Math.round(totalScore * 10) / 10; // e.g. 84.5
 
     let tier: 'High' | 'Medium' | 'Low' = 'Low';
     if (totalScore >= 75) tier = 'High';
@@ -215,4 +201,3 @@ export class RuleBasedMatchStrategy implements MatchStrategy {
     };
   }
 }
-

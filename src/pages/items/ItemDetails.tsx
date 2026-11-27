@@ -42,6 +42,8 @@ import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CategoryIcon } from '@/lib/categoryIcons';
 import { ShareButton } from '@/components/common/ShareButton';
+import { ReturnTimeline } from '@/components/items/ReturnTimeline';
+import { triggerCelebrationConfetti } from '@/lib/confetti';
 
 export const ItemDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -379,6 +381,7 @@ export const ItemDetailsPage: React.FC = () => {
       if (!res.ok) throw new Error(data.error || 'Failed to confirm handover');
       setApprovedClaim(data.claim);
       if (data.itemStatus === 'returned' && item) {
+        triggerCelebrationConfetti();
         setItem({ ...item, status: 'returned' });
       }
       alert(data.message || t('claims:handover.confirm_success', 'Handover confirmed!'));
@@ -491,6 +494,7 @@ export const ItemDetailsPage: React.FC = () => {
       .eq('id', item.id);
 
     if (!error) {
+      triggerCelebrationConfetti();
       setItem({ ...item, status: 'returned' });
     }
   };
@@ -629,6 +633,9 @@ export const ItemDetailsPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Return Progress Timeline Tracker */}
+      <ReturnTimeline item={item} claim={userClaim} className="mb-2" />
 
       {/* Main Grid: Gallery on left, Details on right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">

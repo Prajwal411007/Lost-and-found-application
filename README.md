@@ -54,6 +54,14 @@ A production-grade, responsive, and privacy-preserving web platform for reportin
    - **Mutual Safe Handover**: Handover status reaches `returned` only when BOTH finder and claimant mutually confirm (`finder_confirmed_handover` and `claimant_confirmed_handover`), with a one-click dispute freeze option alerting moderators.
    - **Rule-Based Fraud Engine & Immutable Audit Log**: Automated detection of rapid claims/reports, copy-pasting, description mirroring, and opportunistic reports, with admin actions (Warn, Lock, Suspend, Dismiss) logged into immutable `admin_audit_logs`.
    - **Data Retention**: 90-day retention anonymization routine (`cleanup_expired_claims()`) that strips sensitive proof files and answers from resolved records.
+9. **Advanced Features & Visual Polish Pass**:
+   - **Smarter Matching Engine**: Hybrid engine combining TF-IDF cosine text similarity with stemming, device/bag synonyms (`mobile/cellphone/smartphone`, `bag/backpack/purse`), color/brand normalization, and 64-bit block-luminance perceptual image hashing (`pHash`) with Hamming distance comparison. Explainable "Why this match?" panel with High/Medium/Low confidence tiers and guidance disclaimer.
+   - **Browse Map View**: List vs Map view toggle with privacy-preserved ~1km rounded coordinates, color-coded lost (rose) and found (teal) pins, mini popup item cards, and floating "Search this area" button.
+   - **Command Palette & Voice Search**: Accessible `Ctrl+K` modal to search items, navigate pages, switch languages, toggle theme, and Web Speech API microphone voice search (`en-US`, `kn-IN`, `hi-IN`).
+   - **Return Timeline Tracker & Confetti Celebrations**: Visual progress tracker on report pages with steps (Reported, Match Suggested, Claim Made, Approved, Handover, Returned) and lightweight celebratory confetti shower on item resolution.
+   - **Community Impact & Privacy Opt-in**: Dual opt-in success stories wall (`finder_opt_in` AND `claimant_opt_in`), monthly top finders leaderboard (respecting `leaderboard_opt_in`), and live database activity ticker.
+   - **Smart Notifications & Quiet Hours**: Monday weekly digest preference, quiet hours time window schedule (`quiet_hours_enabled`, `quiet_hours_start`, `quiet_hours_end`), and dashboard smart suggestions strip.
+   - **Micro-Interactions & Accessibility**: Shimmering skeleton loaders, interactive favorite heart button, mobile bottom navigation bar (`Home`, `Browse`, `Report`, `Messages`, `Profile`), and 4-step onboarding tour replayable from Help.
 
 ---
 

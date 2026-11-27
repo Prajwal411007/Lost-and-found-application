@@ -15,6 +15,12 @@ import {
   AlertTriangle,
   Loader2,
   RotateCcw,
+  LayoutList,
+  Map as MapIcon,
+  Mic,
+  MicOff,
+  Heart,
+  Sparkles,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -26,6 +32,10 @@ import { useCategories } from '@/hooks/useCategories';
 import { CategoryIcon } from '@/lib/categoryIcons';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LeafletMap, MapMarker } from '@/components/common/LeafletMap';
+import { SkeletonCard } from '@/components/common/SkeletonCard';
+import { useVoiceSearch } from '@/hooks/useVoiceSearch';
+import { useFavorites } from '@/hooks/useFavorites';
 
 export const BrowsePage: React.FC = () => {
   const { t, i18n } = useTranslation(['browse', 'common']);
@@ -68,6 +78,29 @@ export const BrowsePage: React.FC = () => {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [showDeniedAlert, setShowDeniedAlert] = useState(false);
   const [isActivatingNearMe, setIsActivatingNearMe] = useState(false);
+  const viewParam = searchParams.get('view') === 'map' ? 'map' : 'list';
+  const [viewMode, setViewMode] = useState<'list' | 'map'>(viewParam);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 37.7749, lng: -122.4194 });
+  const [mapMoved, setMapMoved] = useState(false);
+  const [mapMovedCenter, setMapMovedCenter] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    const currentView = searchParams.get('view') === 'map' ? 'map' : 'list';
+    if (currentView !== viewMode) {
+      setViewMode(currentView);
+    }
+  }, [searchParams]);
+
+  // Favorites hook
+  const { isFavorite, toggleFavorite } = useFavorites();
+
+  // Voice Search integration (Web Speech API)
+  const { isSupported: isVoiceSupported, isListening, toggleListening } = useVoiceSearch({
+    onResult: (spokenText) => {
+      setSearchInput(spokenText);
+      updateFilter('q', spokenText);
+    },
+  });
 
   const pageSize = 12;
 
@@ -262,6 +295,41 @@ export const BrowsePage: React.FC = () => {
     return list;
   }, [items, nearMeParam, radiusParam, userCoords, sortByParam]);
 
+  const mapMarkers: MapMarker[] = useMemo(() => {
+    return displayItems
+      .filter((item) => item.latitude != null && item.longitude != null)
+      .map((item) => {
+        // Privacy: Coordinates rounded to 2 decimal places (~1km precision)
+        const roundedLat = Math.round((item.latitude as number) * 100) / 100;
+        const roundedLng = Math.round((item.longitude as number) * 100) / 100;
+        const isLost = item.type === 'lost';
+
+        const popupHtml = `
+          <div style="min-width: 170px; font-family: inherit; font-size: 12px; line-height: 1.4;">
+            ${item.primary_image_url ? `<img src="${item.primary_image_url}" alt="${item.title}" style="width: 100%; height: 85px; object-fit: cover; border-radius: 8px; margin-bottom: 6px;" />` : ''}
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background-color: ${isLost ? '#ffe4e6' : '#ccfbf1'}; color: ${isLost ? '#be123c' : '#0f766e'};">
+                ${isLost ? 'Lost Item' : 'Found Item'}
+              </span>
+              <span style="font-size: 10px; color: #64748b;">${item.date_occurred ? item.date_occurred.split('T')[0] : ''}</span>
+            </div>
+            <strong style="display: block; font-size: 13px; color: #0f172a; margin-bottom: 2px;">${item.title}</strong>
+            <span style="display: block; font-size: 11px; color: #64748b; margin-bottom: 8px;">📍 ${[item.location_landmark, item.location_city].filter(Boolean).join(', ') || 'Approximate area'}</span>
+            <a href="/items/${item.id}" style="display: block; text-align: center; padding: 6px 10px; background-color: #0d9488; color: white; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 11px;">View Item Details</a>
+          </div>
+        `;
+
+        return {
+          id: item.id,
+          lat: roundedLat,
+          lng: roundedLng,
+          title: item.title,
+          type: (item.type === 'lost' ? 'lost' : 'found') as 'lost' | 'found',
+          popupHtml,
+        };
+      });
+  }, [displayItems]);
+
   const totalPages = nearMeParam ? 1 : Math.ceil(totalCount / pageSize);
 
   const activeFiltersCount = useMemo(() => {
@@ -292,8 +360,42 @@ export const BrowsePage: React.FC = () => {
           </p>
         </div>
 
-        {/* Action CTAs */}
-        <div className="flex items-center space-x-2">
+        {/* Action CTAs & View Switcher */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* List / Map View Switcher */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('list');
+                updateFilter('view', undefined);
+              }}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              <span>{t('browse:views.list', 'List')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('map');
+                updateFilter('view', 'map');
+              }}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'map'
+                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <MapIcon className="w-3.5 h-3.5" />
+              <span>{t('browse:views.map', 'Map')}</span>
+            </button>
+          </div>
+
           <Link
             to="/report/lost"
             className="px-4 py-2 text-xs font-bold rounded-xl text-rose-700 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 hover:bg-rose-100 transition shadow-sm whitespace-nowrap"
@@ -312,7 +414,7 @@ export const BrowsePage: React.FC = () => {
       {/* Search & Filter Bar */}
       <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-          {/* Free text search input */}
+          {/* Free text search input with voice search */}
           <div className="sm:col-span-6 relative">
             <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
             <input
@@ -320,16 +422,35 @@ export const BrowsePage: React.FC = () => {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder={t('browse:filters.search_placeholder')}
-              className="w-full pl-10 pr-8 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-16 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
             />
-            {searchInput && (
-              <button
-                onClick={() => setSearchInput('')}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            <div className="absolute right-2.5 top-2 flex items-center space-x-1">
+              {isVoiceSupported && (
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  title={isListening ? 'Stop listening' : 'Search by voice'}
+                  aria-label="Voice search"
+                  className={`p-1 rounded-lg transition cursor-pointer ${
+                    isListening
+                      ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/50 animate-pulse'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
+              )}
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Location input */}
@@ -535,9 +656,56 @@ export const BrowsePage: React.FC = () => {
         </div>
       )}
 
-      {/* Main Grid View */}
-      {isLoading ? (
-        <LoadingSpinner size="lg" message={t('common:actions.loading')} />
+      {/* Main Content Area: Map View or Grid View */}
+      {viewMode === 'map' ? (
+        <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+          {/* Privacy Disclaimer Banner */}
+          <div className="bg-slate-50 dark:bg-slate-900/90 px-4 py-2 border-b border-slate-200 dark:border-slate-700/80 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <span className="flex items-center">
+              <span className="mr-1.5">🔒</span>
+              <span>{t('browse:map.privacy_notice', 'Item locations are approximated to ~1km radius for privacy protection.')}</span>
+            </span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              {mapMarkers.length} {t('browse:map.items_mapped', 'items mapped')}
+            </span>
+          </div>
+
+          {/* Floating Search This Area Button */}
+          {mapMoved && (
+            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[1000]">
+              <button
+                type="button"
+                onClick={() => {
+                  setMapMoved(false);
+                  if (mapMovedCenter) {
+                    setMapCenter(mapMovedCenter);
+                    updateFilter('location', `${mapMovedCenter.lat.toFixed(2)}, ${mapMovedCenter.lng.toFixed(2)}`);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-full shadow-lg flex items-center space-x-1.5 transition transform hover:scale-105 cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>{t('browse:map.search_this_area', 'Search this area')}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Map */}
+          <LeafletMap
+            markers={mapMarkers}
+            center={[mapCenter.lat, mapCenter.lng]}
+            zoom={12}
+            height="560px"
+            onMapMoveEnd={(newCenter) => {
+              setMapMoved(true);
+              setMapMovedCenter(newCenter);
+            }}
+          />
+        </div>
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          <SkeletonCard count={8} />
+        </div>
       ) : displayItems.length === 0 ? (
         <EmptyState
           title={t('browse:empty.title')}
@@ -554,86 +722,111 @@ export const BrowsePage: React.FC = () => {
               userCoords && item.latitude != null && item.longitude != null
                 ? haversineDistance(userCoords.latitude, userCoords.longitude, item.latitude, item.longitude)
                 : null;
+            const isFav = isFavorite(item.id);
 
             return (
-              <Link
+              <div
                 key={item.id}
-                to={`/items/${item.id}`}
-                className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between relative"
               >
-                <div>
-                  {/* Image Cover */}
-                  <div className="relative aspect-video bg-slate-100 dark:bg-slate-900 overflow-hidden">
-                    {item.primary_image_url ? (
-                      <img
-                        src={item.primary_image_url}
-                        alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-400">
-                        <Package className="w-10 h-10 stroke-1" />
-                      </div>
-                    )}
+                <Link
+                  to={`/items/${item.id}`}
+                  className="flex flex-col h-full justify-between"
+                >
+                  <div>
+                    {/* Image Cover */}
+                    <div className="relative aspect-video bg-slate-100 dark:bg-slate-900 overflow-hidden">
+                      {item.primary_image_url ? (
+                        <img
+                          src={item.primary_image_url}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400">
+                          <Package className="w-10 h-10 stroke-1" />
+                        </div>
+                      )}
 
-                    {/* Badges */}
-                    <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
-                      <span
-                        className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-md shadow-sm ${
-                          item.type === 'lost'
-                            ? 'bg-rose-600 text-white'
-                            : 'bg-teal-600 text-white'
-                        }`}
-                      >
-                        {item.type === 'lost' ? t('common:status.lost') : t('common:status.found')}
-                      </span>
-                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-black/60 backdrop-blur-md text-white rounded-md flex items-center">
-                        <CategoryIcon icon={item.category?.icon} slug={item.category?.slug} className="w-3 h-3 mr-1 shrink-0" />
-                        <span className="truncate max-w-[120px]">{getCategoryDisplayName(item.category, i18n.language) || 'Item'}</span>
-                      </span>
-                      {distance !== null && (
-                        <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600/90 backdrop-blur-md text-white rounded-md shadow-sm flex items-center">
-                          <Navigation className="w-2.5 h-2.5 mr-1" />
-                          {formatLocalizedDistance(distance * 1000, t, i18n.language)}
+                      {/* Top Badges */}
+                      <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 z-10">
+                        <span
+                          className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-md shadow-sm ${
+                            item.type === 'lost'
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-teal-600 text-white'
+                          }`}
+                        >
+                          {item.type === 'lost' ? t('common:status.lost') : t('common:status.found')}
+                        </span>
+                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-black/60 backdrop-blur-md text-white rounded-md flex items-center">
+                          <CategoryIcon icon={item.category?.icon} slug={item.category?.slug} className="w-3 h-3 mr-1 shrink-0" />
+                          <span className="truncate max-w-[120px]">{getCategoryDisplayName(item.category, i18n.language) || 'Item'}</span>
+                        </span>
+                        {distance !== null && (
+                          <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600/90 backdrop-blur-md text-white rounded-md shadow-sm flex items-center">
+                            <Navigation className="w-2.5 h-2.5 mr-1" />
+                            {formatLocalizedDistance(distance * 1000, t, i18n.language)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Status Badges */}
+                      {item.status === 'returned' && (
+                        <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-md shadow-sm z-10">
+                          {t('common:status.returned')}
+                        </span>
+                      )}
+                      {item.status === 'pending_claim' && (
+                        <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 bg-amber-600 text-white text-[10px] font-bold uppercase rounded-md shadow-sm z-10">
+                          {t('common:status.pending')}
                         </span>
                       )}
                     </div>
 
-                    {item.status === 'returned' && (
-                      <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-md shadow-sm">
-                        {t('common:status.returned')}
-                      </span>
-                    )}
-                    {item.status === 'pending_claim' && (
-                      <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-amber-600 text-white text-[10px] font-bold uppercase rounded-md shadow-sm">
-                        {t('common:status.pending')}
-                      </span>
-                    )}
+                    {/* Content */}
+                    <div className="p-4 space-y-1.5">
+                      <h3 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 line-clamp-1 transition-colors">
+                        {item.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                        {item.description}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Content */}
-                  <div className="p-4 space-y-1.5">
-                    <h3 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 line-clamp-1">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-                      {item.description}
-                    </p>
+                  {/* Card Footer */}
+                  <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center truncate max-w-[130px]">
+                      <MapPin className="w-3 h-3 mr-1 text-slate-400 flex-shrink-0" />
+                      <span className="truncate">{item.location_city || item.location_country || 'Global'}</span>
+                    </span>
+                    <span className="flex items-center flex-shrink-0">
+                      <Clock className="w-3 h-3 mr-1 text-slate-400" />
+                      {formatRelativeTime(item.created_at)}
+                    </span>
                   </div>
-                </div>
+                </Link>
 
-                {/* Card Footer */}
-                <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center truncate max-w-[130px]">
-                    <MapPin className="w-3 h-3 mr-1 text-slate-400 flex-shrink-0" />
-                    <span className="truncate">{item.location_city || item.location_country || 'Global'}</span>
-                  </span>
-                  <span className="flex items-center flex-shrink-0">
-                    <Clock className="w-3 h-3 mr-1 text-slate-400" />
-                    {formatRelativeTime(item.created_at)}
-                  </span>
-                </div>
-              </Link>
+                {/* Favorite Heart Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleFavorite(item.id);
+                  }}
+                  className="absolute top-2.5 right-2.5 z-20 p-1.5 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white transition transform active:scale-125 cursor-pointer shadow-sm"
+                  title={isFav ? 'Remove from saved' : 'Save item'}
+                  aria-label="Save item"
+                >
+                  <Heart
+                    className={`w-3.5 h-3.5 transition-colors ${
+                      isFav ? 'fill-rose-500 text-rose-500' : 'text-white'
+                    }`}
+                  />
+                </button>
+              </div>
             );
           })}
         </div>

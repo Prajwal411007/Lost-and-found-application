@@ -40,4 +40,6 @@ export const tagContactLimiter = rateLimit({
   },
 });
 
+export const generalLimiter = apiLimiter;
+
 

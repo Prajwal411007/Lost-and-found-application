@@ -7,6 +7,7 @@ import { searchLimiter } from '../middleware/rateLimiter.js';
 import { matchingService } from '../services/matching/matchingService.js';
 import { redactSensitiveData } from '../services/redaction.js';
 import { findSimilarOpenItems, checkUserFraudRules } from '../services/fraudDetection.js';
+import { computePerceptualHash } from '../services/matching/imageHash.js';
 
 export const itemsRouter = Router();
 
@@ -188,6 +189,7 @@ itemsRouter.post(
 
       const safeTitle = redactSensitiveData(itemData.title);
       const safeDescription = redactSensitiveData(itemData.description);
+      const imagePhash = itemData.primary_image_url ? computePerceptualHash(itemData.primary_image_url) : null;
 
       const { data: createdItem, error } = await supabaseAdmin
         .from('items')
@@ -195,6 +197,7 @@ itemsRouter.post(
           ...itemData,
           title: safeTitle,
           description: safeDescription,
+          image_phash: imagePhash,
           user_id: userId,
           status: 'open',
         })

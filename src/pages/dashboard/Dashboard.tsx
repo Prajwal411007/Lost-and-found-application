@@ -17,6 +17,8 @@ import {
   Trash2,
   Check,
   ChevronRight,
+  ChevronDown,
+  Info,
   AlertCircle,
   Eye,
   SlidersHorizontal,
@@ -31,6 +33,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Item, Match, Claim, AppNotification, NotificationPreferences } from '@/types';
 import { formatDate, formatRelativeTime, getScoreTier } from '@/lib/utils';
+import { triggerCelebrationConfetti } from '@/lib/confetti';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfigurationRequired } from '@/components/common/ConfigurationRequired';
@@ -51,6 +54,11 @@ export const DashboardPage: React.FC = () => {
   const [savedItems, setSavedItems] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences | null>(null);
+  const [smartSuggestions, setSmartSuggestions] = useState<{
+    nearLostReports: any[];
+    helpCandidates: any[];
+  }>({ nearLostReports: [], helpCandidates: [] });
+  const [expandedMatches, setExpandedMatches] = useState<Record<string, boolean>>({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [selectedClaimForReview, setSelectedClaimForReview] = useState<Claim | null>(null);
@@ -175,6 +183,25 @@ export const DashboardPage: React.FC = () => {
           .single();
 
         if (prefs) setNotificationPrefs(prefs as NotificationPreferences);
+
+        // 7. Fetch smart suggestions
+        try {
+          const session = (await supabase.auth.getSession()).data.session;
+          if (session?.access_token) {
+            const res = await fetch('/api/community/smart-suggestions', {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setSmartSuggestions({
+                nearLostReports: data.nearLostReports || [],
+                helpCandidates: data.helpCandidates || [],
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Notice loading smart suggestions:', err);
+        }
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -197,6 +224,7 @@ export const DashboardPage: React.FC = () => {
       .eq('id', itemId);
 
     if (!error) {
+      triggerCelebrationConfetti();
       setLostItems((prev) =>
         prev.map((i) => (i.id === itemId ? { ...i, status: 'returned' } : i))
       );
@@ -400,11 +428,10 @@ export const DashboardPage: React.FC = () => {
           <button
             key={s.tab}
             onClick={() => setTab(s.tab)}
-            className={`p-3.5 rounded-2xl border text-left transition ${
-              activeTab === s.tab
-                ? 'bg-white dark:bg-slate-800 border-blue-500 ring-2 ring-blue-500/20 shadow-sm'
-                : 'bg-white/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/80 hover:bg-white'
-            }`}
+            className={`p-3.5 rounded-2xl border text-left transition ${activeTab === s.tab
+              ? 'bg-white dark:bg-slate-800 border-blue-500 ring-2 ring-blue-500/20 shadow-sm'
+              : 'bg-white/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/80 hover:bg-white'
+              }`}
           >
             <span className={`text-xl font-black ${s.color}`}>{s.count}</span>
             <span className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
@@ -413,6 +440,97 @@ export const DashboardPage: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {/* Smart Suggestions Strip */}
+      {(smartSuggestions.nearLostReports.length > 0 || smartSuggestions.helpCandidates.length > 0) && (
+        <div className="bg-gradient-to-r from-teal-50/80 via-blue-50/80 to-indigo-50/80 dark:from-slate-800/90 dark:via-slate-800/80 dark:to-blue-950/40 p-4 sm:p-5 rounded-3xl border border-teal-200/60 dark:border-slate-700 space-y-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="p-1.5 rounded-xl bg-teal-600 text-white shadow-xs">
+                <Sparkles className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {t('dashboard:suggestions.title', 'Smart Suggestions for You')}
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {t('dashboard:suggestions.subtitle', 'Live discoveries based on your active reports and area.')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Section 1: Found near where you lost yours */}
+            {smartSuggestions.nearLostReports.length > 0 && (
+              <div className="bg-white/90 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-700 dark:text-teal-400 flex items-center">
+                    <MapPin className="w-3.5 h-3.5 mr-1" />
+                    {t('dashboard:suggestions.near_lost', 'Items found near where you lost yours')}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 font-bold">
+                    {smartSuggestions.nearLostReports.length}
+                  </span>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {smartSuggestions.nearLostReports.map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/items/${item.id}`}
+                      className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-teal-50 dark:hover:bg-slate-800 transition border border-transparent hover:border-teal-200 text-xs"
+                    >
+                      <div className="truncate mr-2">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">
+                          {item.title}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {item.location_city || 'Nearby'}
+                        </span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Section 2: Reports you might be able to help with */}
+            {smartSuggestions.helpCandidates.length > 0 && (
+              <div className="bg-white/90 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-700 dark:text-blue-400 flex items-center">
+                    <Heart className="w-3.5 h-3.5 mr-1" />
+                    {t('dashboard:suggestions.can_help', 'Reports you might be able to help with')}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-bold">
+                    {smartSuggestions.helpCandidates.length}
+                  </span>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {smartSuggestions.helpCandidates.map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/items/${item.id}`}
+                      className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-slate-800 transition border border-transparent hover:border-blue-200 text-xs"
+                    >
+                      <div className="truncate mr-2">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">
+                          {item.title}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {item.location_city || 'Recent'}
+                        </span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tabs Navigation */}
       <div className="border-b border-slate-200 dark:border-slate-800 flex overflow-x-auto gap-2 text-sm font-semibold">
@@ -428,11 +546,10 @@ export const DashboardPage: React.FC = () => {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`py-3 px-4 border-b-2 flex items-center space-x-2 whitespace-nowrap transition ${
-              activeTab === t.id
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
+            className={`py-3 px-4 border-b-2 flex items-center space-x-2 whitespace-nowrap transition ${activeTab === t.id
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
           >
             <t.icon className="w-4 h-4" />
             <span>{t.label}</span>
@@ -467,11 +584,10 @@ export const DashboardPage: React.FC = () => {
                       <div className="p-5 space-y-3">
                         <div className="flex items-center justify-between">
                           <span
-                            className={`px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-md ${
-                              item.status === 'returned'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
+                            className={`px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-md ${item.status === 'returned'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                              }`}
                           >
                             {item.status.replace('_', ' ')}
                           </span>
@@ -568,11 +684,10 @@ export const DashboardPage: React.FC = () => {
                       <div className="p-5 space-y-3">
                         <div className="flex items-center justify-between">
                           <span
-                            className={`px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-md ${
-                              item.status === 'returned'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-teal-100 text-teal-800'
-                            }`}
+                            className={`px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-md ${item.status === 'returned'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-teal-100 text-teal-800'
+                              }`}
                           >
                             {item.status.replace('_', ' ')}
                           </span>
@@ -685,19 +800,70 @@ export const DashboardPage: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Breakdown Accordion */}
-                        <div className="space-y-1.5 text-xs">
-                          <p className="font-bold text-slate-700 dark:text-slate-300">Score Breakdown Factors:</p>
-                          {m.score_breakdown &&
-                            Object.keys(m.score_breakdown).map((k) => {
-                              const dim = m.score_breakdown[k];
-                              return (
-                                <div key={k} className="flex justify-between text-slate-500">
-                                  <span>{dim.name} ({dim.weight}%):</span>
-                                  <span className="font-medium text-slate-700 dark:text-slate-300">{dim.explanation}</span>
-                                </div>
-                              );
-                            })}
+                        {/* Expandable "Why this match?" panel */}
+                        <div className="border border-slate-100 dark:border-slate-700/80 rounded-xl overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedMatches((prev) => ({
+                                ...prev,
+                                [m.id]: !prev[m.id],
+                              }))
+                            }
+                            className="w-full flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                          >
+                            <span className="flex items-center space-x-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                              <span>Why this match?</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold uppercase ${
+                                tier.tier === 'High'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                  : tier.tier === 'Medium'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                  : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                              }`}>
+                                {tier.tier} Confidence
+                              </span>
+                            </span>
+                            {expandedMatches[m.id] ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                          </button>
+
+                          {expandedMatches[m.id] && (
+                            <div className="p-3 bg-white dark:bg-slate-800/80 space-y-2.5 text-xs border-t border-slate-100 dark:border-slate-700/80">
+                              {/* Per-factor badges */}
+                              <div className="space-y-1.5">
+                                {m.score_breakdown &&
+                                  Object.keys(m.score_breakdown).map((k) => {
+                                    const dim = m.score_breakdown[k];
+                                    return (
+                                      <div key={k} className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-700/40 text-[11px]">
+                                        <div className="flex items-center space-x-1.5">
+                                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                            {dim.name}
+                                          </span>
+                                          <span className="text-[10px] text-slate-400">
+                                            ({dim.weight}%)
+                                          </span>
+                                        </div>
+                                        <span className="font-medium text-slate-600 dark:text-slate-300">
+                                          {dim.explanation}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+
+                              {/* Prominent Disclaimer */}
+                              <div className="flex items-start space-x-1.5 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-[10px] text-amber-800 dark:text-amber-300">
+                                <Info className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                <span>Matches remain suggestions only; they are not proof of ownership.</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         <div className="pt-2 flex gap-2">
@@ -749,17 +915,16 @@ export const DashboardPage: React.FC = () => {
                           <div className="space-y-1">
                             <div className="flex items-center space-x-2">
                               <span
-                                className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
-                                  claim.status === 'approved' || claim.status === 'handover_pending'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
-                                    : claim.status === 'rejected'
+                                className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${claim.status === 'approved' || claim.status === 'handover_pending'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                                  : claim.status === 'rejected'
                                     ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
                                     : claim.status === 'on_hold'
-                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200'
-                                    : claim.status === 'disputed'
-                                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200'
-                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
-                                }`}
+                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200'
+                                      : claim.status === 'disputed'
+                                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200'
+                                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                                  }`}
                               >
                                 {claim.status}
                               </span>
@@ -844,17 +1009,16 @@ export const DashboardPage: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <div>
                             <span
-                              className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
-                                claim.status === 'approved' || claim.status === 'handover_pending'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : claim.status === 'rejected'
+                              className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${claim.status === 'approved' || claim.status === 'handover_pending'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : claim.status === 'rejected'
                                   ? 'bg-rose-100 text-rose-800'
                                   : claim.status === 'on_hold'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : claim.status === 'disputed'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : claim.status === 'disputed'
+                                      ? 'bg-purple-100 text-purple-800'
+                                      : 'bg-amber-100 text-amber-800'
+                                }`}
                             >
                               {claim.status}
                             </span>
@@ -927,11 +1091,10 @@ export const DashboardPage: React.FC = () => {
                 notifications.map((n) => (
                   <div
                     key={n.id}
-                    className={`p-4 rounded-2xl border transition flex items-start justify-between ${
-                      n.read
-                        ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/60'
-                        : 'bg-blue-50/60 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900'
-                    }`}
+                    className={`p-4 rounded-2xl border transition flex items-start justify-between ${n.read
+                      ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/60'
+                      : 'bg-blue-50/60 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900'
+                      }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
@@ -1096,19 +1259,18 @@ export const DashboardPage: React.FC = () => {
                   {t('claims:match.indicator_title', 'Verification Match Engine')}
                 </span>
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                    selectedClaimForReview.match_score === 'high' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 70)
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                      : selectedClaimForReview.match_score === 'medium' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 40)
+                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${selectedClaimForReview.match_score === 'high' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 70)
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    : selectedClaimForReview.match_score === 'medium' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 40)
                       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                       : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                  }`}
+                    }`}
                 >
                   {selectedClaimForReview.match_score === 'high' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 70)
                     ? t('claims:match.high', 'High Match')
                     : selectedClaimForReview.match_score === 'medium' || (typeof selectedClaimForReview.match_score === 'number' && selectedClaimForReview.match_score >= 40)
-                    ? t('claims:match.medium', 'Medium Match')
-                    : t('claims:match.low', 'Low Match')}
+                      ? t('claims:match.medium', 'Medium Match')
+                      : t('claims:match.low', 'Low Match')}
                   {typeof selectedClaimForReview.match_score === 'number' ? ` (${selectedClaimForReview.match_score}%)` : ''}
                 </span>
               </div>
